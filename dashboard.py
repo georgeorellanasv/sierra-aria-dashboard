@@ -90,49 +90,23 @@ if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 if not st.session_state["authenticated"]:
-    st.markdown(
-        """
-        <div style="max-width:480px;margin:3rem auto 1rem;
-             padding:2rem 2.2rem;background:#1a1a1a;color:#faf9f5;
-             border-radius:8px;border-left:6px solid #c44f3a;">
-          <div style="font-size:0.72rem;color:#da7756;text-transform:uppercase;
-               letter-spacing:0.12em;font-weight:600;margin-bottom:0.5rem;">
-            Sierra / Aria Analytics
-          </div>
-          <div style="font-size:1.4rem;font-weight:600;margin-bottom:0.5rem;">
-            🔒  Acceso restringido
-          </div>
-          <div style="font-size:0.92rem;color:#d8d1c2;line-height:1.5;">
-            Este dashboard contiene análisis de sesiones reales con PII de
-            callers de Ria Money Transfer. Introduce el código de acceso para
-            continuar.<br><br>
-            <em style="color:#b8b0a0;font-size:0.82rem;">
-              This dashboard contains analysis of real caller sessions with PII.
-              Enter the access code to continue.
-            </em>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
     _cols = st.columns([1, 2, 1])
     with _cols[1]:
+        st.markdown("<div style='height:4rem;'></div>", unsafe_allow_html=True)
         with st.form("auth_form", clear_on_submit=False):
             code = st.text_input(
-                "Código / Code",
+                "Enter passcode",
                 type="password",
                 placeholder="••••",
-                label_visibility="collapsed",
             )
-            ok = st.form_submit_button("Entrar / Enter",
-                                       type="primary",
+            ok = st.form_submit_button("Enter", type="primary",
                                        use_container_width=True)
             if ok:
                 if code == str(APP_PASSCODE):
                     st.session_state["authenticated"] = True
                     st.rerun()
                 else:
-                    st.error("Código incorrecto / Incorrect code.")
+                    st.error("Incorrect passcode.")
     st.stop()
 
 
