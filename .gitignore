@@ -1,0 +1,30 @@
+# Environment / secrets
+.env
+.env.local
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Sensitive scraped data — DO NOT COMMIT (contains caller PII)
+data/*.db
+data/*.har
+data/*.log
+data/graphql_ops/
+data/sierra_docs/
+data/raw/
+
+# Reports may contain excerpts of customer data
+reports/*.html
+reports/issue_log.xlsx
+reports/issue_log_raw.json
+
+# OS
+.DS_Store
+Thumbs.db

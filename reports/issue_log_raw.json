@@ -1,0 +1,263 @@
+```json
+{
+  "issues": [
+    {
+      "journey": "Escalation",
+      "issue_title": "Transfer tool invoked but never completes — agent loops on transfer promise indefinitely",
+      "description": "Across multiple sessions the agent announces a human transfer repeatedly (up to 15+ times in one call) but the SIP transfer never succeeds and no fallback is triggered. The agent continues re-promising the transfer rather than acknowledging the technical failure, leaving callers trapped. In one session the caller stated 'setenta veces he dicho, no me pasa' (seventy times I said it, it won't transfer). A false-transfer monitor fires in all affected sessions but the loop continues for the full call duration until timeout.",
+      "impacted_count": 8,
+      "proposed_outcome": "IN 'Transfer to Human' journey block:\n  IF tool:transfer is invoked AND no SIP confirmation response is received within 10 seconds\n  >> log transfer_failure event\n  >> inform caller: 'I'm having trouble connecting you right now. I've created a support ticket so a team member can call you back.'\n  >> call tool:CreateZendeskTicket(reason='transfer_failure', intent=captured_intent, language=session_language)\n  >> provide ticket number to caller\n  >> end call gracefully — do NOT re-invoke tool:transfer or repeat the transfer promise\n  IF tool:transfer fails a second time in the same session\n  >> immediately skip to Zendesk ticket creation path above without any further transfer attempts",
+      "severity": "Critical",
+      "reference_sessions": [
+        "audit-01KPV1X8VSPPRHH5BCE5AYJVHM",
+        "audit-01KPV5CC1CRPYXB94K6S4YQDPW",
+        "audit-01KPVA5ENW9GSF2PD4B33YBY8R"
+      ]
+    },
+    {
+      "journey": "Authentication",
+      "issue_title": "CVP authentication loop with no hard exit — agent retries identical credentials indefinitely and never creates escalation ticket",
+      "description": "When tool:AttemptCvpAuthentication fails, the agent re-asks the same three fields with no variation, looping up to 3+ times with identical parameters. No Zendesk ticket is created and no transfer to human is offered after the permitted retry count is exhausted. In several sessions the agent also reads all three collected CVP values back verbatim after failure, unnecessarily exposing partial PII. The journey block instructs agents not to transfer on auth failure, but provides no terminal exit path, causing infinite loops.",
+      "impacted_count": 9,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block, tool:AttemptCvpAuthentication sub-flow:\n  FIRST FAILURE:\n  >> do NOT read back all three collected fields\n  >> ask caller to re-confirm ONLY the single most likely mismatched field (amount paid including fees in send currency)\n  >> retry tool:AttemptCvpAuthentication once with corrected value\n  SECOND FAILURE:\n  >> call tool:CreateZendeskTicket(reason='cvp_auth_failure_max_retries', intent=captured_intent)\n  >> inform caller: 'I wasn't able to verify your details. I've raised a support ticket [ticket_number] and a team member will follow up with you.'\n  >> end call — do NOT offer transfer, do NOT loop again\n  GUARD RULES:\n  >> NEVER read all three CVP parameters back in a single turn after failure\n  >> NEVER retry tool:AttemptCvpAuthentication with identical parameters as a prior failed attempt",
+      "severity": "Critical",
+      "reference_sessions": [
+        "audit-01KPTFEP5R00BNKN7ZXZR9960W",
+        "audit-01KPTYR1QY1XXS0DV7NGVYP4AM",
+        "audit-01KPVQG59KQMRNQY7MEFWRDPRM"
+      ]
+    },
+    {
+      "journey": "Authentication",
+      "issue_title": "Agent never calls tool:CustomerByTelephone as fallback when order number collection fails repeatedly",
+      "description": "In the majority of sessions requiring authentication, the agent loops 5–10+ times asking the caller to re-spell an alphanumeric order number after tool:CustomerByOrderNumber fails, never falling back to tool:CustomerByTelephone using the caller's ANI. This single missing fallback is the root cause of the largest cluster of infinite loops across transaction status, cancel, and refund journeys. Callers frequently cannot reliably dictate a 10+ character mixed code by voice, especially in non-native languages.",
+      "impacted_count": 14,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block, order-lookup sub-flow:\n  ATTEMPT 1: collect order number phonetically; call tool:CustomerByOrderNumber\n  IF tool:CustomerByOrderNumber fails\n  >> ATTEMPT 2: ask caller to re-spell using NATO phonetic alphabet with agent scaffolding (e.g. 'F as in Foxtrot'); call tool:CustomerByOrderNumber again\n  IF tool:CustomerByOrderNumber fails a second time\n  >> immediately call tool:CustomerByTelephone using caller ANI (do NOT ask caller again)\n  IF tool:CustomerByTelephone returns a customer record\n  >> proceed to tool:AttemptCvpAuthentication using the resolved record\n  IF tool:CustomerByTelephone also fails\n  >> call tool:CreateZendeskTicket(reason='unable_to_identify_customer', intent=captured_intent)\n  >> inform caller a human will follow up with ticket reference\n  >> end call\n  HARD RULE: after 2 failed tool:CustomerByOrderNumber attempts, do NOT request order number a third time before trying tool:CustomerByTelephone",
+      "severity": "Critical",
+      "reference_sessions": [
+        "audit-01KPVBJ9RQP098PVHB0SWNDF1M",
+        "audit-01KPTXX528P4E934M6427V28AG",
+        "audit-01KPVGKJBKX00NBATFPQK0JW"
+      ]
+    },
+    {
+      "journey": "Authentication",
+      "issue_title": "Agent collects wrong CVP fields — asks DOB, address, email, phone or beneficiary name instead of mandated name/country/amount",
+      "description": "Multiple agents asked for date of birth, home address, email address, phone number, or beneficiary name as authentication fields — none of which are permitted in the CVP flow. The correct three questions are: (1) full name, (2) destination country of most recent transaction, (3) total amount paid including fees in local send currency. Asking disallowed questions causes repeated auth failures and erodes caller trust. One agent also failed to specify that the amount must include fees and be in the send currency, causing avoidable second-attempt failures.",
+      "impacted_count": 5,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block, before calling tool:AttemptCvpAuthentication:\n  ENFORCE: collect ONLY these three fields in order:\n    1. Full name as it appears on the Ria account\n    2. Country the most recent transfer was sent TO\n    3. Total amount paid including fees, in the currency used to send (local send currency — clarify this on first ask)\n  GUARD: if agent prompt contains any of [date of birth, address, city, email, phone, beneficiary name, destination amount] → reject prompt and re-generate with correct field\n  ON FIRST COLLECTION of field 3: explicitly state 'Please give me the total amount you paid including any fees, in the currency you used to send'\n  NEVER ask any additional or substitute questions outside these three fields",
+      "severity": "Critical",
+      "reference_sessions": [
+        "audit-01KPTFEP5R00BNKN7ZXZR9960W",
+        "audit-01KPTV4NFWPM1YJ2KWTHH51WTR",
+        "audit-01KPTXP3815F0S4DEV2X5PTS4M"
+      ]
+    },
+    {
+      "journey": "Authentication",
+      "issue_title": "Agent routes agent-callers through customer CVP flow — tool:AuthenticateAgent never invoked",
+      "description": "When a caller self-identifies as a Ria agent, the agent ignores this signal and proceeds through the customer authentication flow (tool:CustomerByOrderNumber + CVP questions), which is incorrect. tool:AuthenticateAgent is never called. This affects both inbound agent callers with genuine operational queries and social-engineering vectors where urgency claims bypass all checks. In one session a caller claiming 'cumplimiento legal urgente' was transferred immediately with no authentication at all.",
+      "impacted_count": 14,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block, after tool:SetCallerType:\n  IF caller_type == 'agent'\n  >> immediately invoke tool:AuthenticateAgent (ask: agent ID phonetically, then business name)\n  >> do NOT collect order number, customer name, CVP questions, or any customer-flow fields before tool:AuthenticateAgent completes\n  IF tool:AuthenticateAgent succeeds\n  >> proceed to agent-appropriate journey (order lookup, balance inquiry, etc.)\n  IF tool:AuthenticateAgent fails after 2 attempts\n  >> call tool:CreateZendeskTicket(reason='agent_authentication_failure')\n  >> transfer to human\n  GUARD: urgency or compliance claims by self-identified agents do NOT bypass tool:AuthenticateAgent — apply same gate regardless of stated reason\n  GUARD: if caller_type is ambiguous after 2 turns, default to 'customer' flow; do NOT default to 'agent' flow",
+      "severity": "Critical",
+      "reference_sessions": [
+        "audit-01KPVQG59KQMRNQY7MEFWRDPRM",
+        "audit-01KPT5WMF5AVD3FTHN33VX3D8W",
+        "audit-01KPT7AN99XNZC05A9SDY5P7JW"
+      ]
+    },
+    {
+      "journey": "Order Status",
+      "issue_title": "Agent discloses transaction status via tool:OrderOverview to unauthenticated callers — bypasses CVP gate entirely",
+      "description": "In numerous sessions the agent calls tool:OrderOverview and shares order status details (including compliance holds, security reviews, transit status, and regulatory instructions) before tool:AttemptCvpAuthentication has succeeded or even been attempted. This represents a data exposure risk and a systematic violation of the authentication gate. The required sequence — tool:CustomerByOrderNumber → tool:AttemptCvpAuthentication → tool:OrderOverview or tool:DetailedOrder — is routinely skipped.",
+      "impacted_count": 10,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block:\n  HARD GATE: tool:OrderOverview and tool:DetailedOrder may ONLY be called after tool:AttemptCvpAuthentication returns a success response\n  IF tool:OrderOverview is called without a preceding successful tool:AttemptCvpAuthentication\n  >> abort the tool call\n  >> return agent to authentication collection step\n  ADDITIONAL RULE: compliance-hold status, security-review status, and regulatory-hold sub-status must NEVER be disclosed without successful tool:AttemptCvpAuthentication\n  FOR 'paid-but-not-received' cases after successful auth:\n  >> use tool:DetailedOrder (not tool:OrderOverview) to retrieve full correspondent and payout details\n  >> do NOT ask caller to re-supply recipient name or bank details already on file",
+      "severity": "Critical",
+      "reference_sessions": [
+        "audit-01KPTGYHCVVCD8C2YYCZXG7C2M",
+        "audit-01KPTGG710FG6BNC66N50S5EBW",
+        "audit-01KPTP625ZSRCJEQ0BCBP45BJG"
+      ]
+    },
+    {
+      "journey": "Escalation",
+      "issue_title": "Agent blocks or ignores repeated explicit transfer-to-human requests — gates escalation on order number or intent justification",
+      "description": "When callers explicitly and repeatedly request a live agent, the agent refuses to transfer until additional conditions are met (e.g., order number provided, intent justified, active order confirmed). In one session a caller asked 8+ times and was repeatedly deflected with 'Can you tell me why you want a human?' The journey block instructs DO NOT transfer when order number is not found, but this rule is being applied indefinitely, contradicting the caller experience principle that persistent escalation requests should be honoured.",
+      "impacted_count": 12,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' and all journey blocks:\n  ESCALATION COUNTER: track consecutive explicit transfer-to-human requests per session\n  FIRST REQUEST: acknowledge and attempt one resolution step ('Let me try to help you quickly — can you tell me your order number?')\n  SECOND REQUEST (without satisfying resolution):\n  >> stop all retry logic immediately\n  >> call tool:CreateZendeskTicket(reason='customer_requested_live_agent', intent=captured_intent, partial_order_number=best_effort_value)\n  >> invoke tool:transfer without any further qualifying questions\n  HARD RULE: NEVER ask caller to justify why they want a human agent\n  HARD RULE: the 'DO NOT transfer when order number not found' instruction applies only to the FIRST escalation request; it must not block transfer on the second request",
+      "severity": "Critical",
+      "reference_sessions": [
+        "audit-01KPTY8GRN9ZFAHFRQ2WXZF3MM",
+        "audit-01KPVQF9JZPZ3YJYMYDRAKX8JM",
+        "audit-01KPTKPW1V615P5Z9AWVQS9F5M"
+      ]
+    },
+    {
+      "journey": "Order Status",
+      "issue_title": "Agent switches languages mid-call despite caller stating a clear language preference",
+      "description": "In a significant number of sessions the agent responds in a different language from the caller's stated preference, or oscillates between two or more languages within the same session (e.g., French/German, Spanish/English, Italian/Spanish). This is a root cause that compounds authentication failures, order-number collection errors, and escalation loops — callers cannot understand CVP questions asked in the wrong language. One caller explicitly asked 'français en français' multiple times yet received German responses.",
+      "impacted_count": 13,
+      "proposed_outcome": "IN Greeting / 'Intents Where User Needs to Authenticate' block:\n  LANGUAGE-LOCK RULE: once the caller states a language preference OR the transcription locale is detected with >80% confidence, set session_language and do NOT change it for any subsequent turn\n  IF caller explicitly states a language (e.g. 'Spanish only', 'français', 'italiano')\n  >> immediately confirm in that language: e.g. 'Claro, continuaremos en español.'\n  >> suppress all non-target-language outputs for the remainder of the session\n  IF transcription includes mixed-language tags (e.g. es-ES detected while agent is responding in it-IT)\n  >> trigger language-switch prompt in detected language before continuing authentication\n  HARD RULE: goodbye messages, filler phrases, and error messages must all be in the session language — never revert to English or another language for any turn",
+      "severity": "Critical",
+      "reference_sessions": [
+        "audit-01KPTXX528P4E934M6427V28AG",
+        "audit-01KPTDEGAV0D992Q03C8N04QNR",
+        "audit-01KPTFEP5R00BNKN7ZXZR9960W"
+      ]
+    },
+    {
+      "journey": "Order Status",
+      "issue_title": "Caller type disambiguation question loops without resolution — SetCallerType never successfully called",
+      "description": "The 'Are you a customer or an agent?' question is asked up to 7 times in some sessions without ever successfully resolving the caller type. The agent does not apply a default after repeated failures, does not handle ambiguous or nonsensical responses (e.g., 'I am an AI', 'customer service', single digits), and never calls tool:SetCallerType to actually record the classification. This stalls every downstream journey block that depends on caller type.",
+      "impacted_count": 9,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' greeting block:\n  ATTEMPT 1: ask 'Are you calling as a customer or as a Ria agent/partner?'\n  IF response is ambiguous, nonsensical, a digit, or an echo of the agent's words\n  >> ATTEMPT 2: rephrase as a binary yes/no — 'Are you the person who sent the money? Say yes or no.'\n  IF still unresolved after ATTEMPT 2\n  >> call tool:SetCallerType(type='customer') as default\n  >> proceed to customer authentication flow\n  >> log ambiguous_caller_type=true for QA review\n  HARD RULE: do NOT ask the caller-type question more than 2 times; always resolve by calling tool:SetCallerType before turn 3 on this topic\n  HARD RULE: a single-digit DTMF response to an open question should trigger a structured menu offer, not a repeat of the open question",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPTYG5PSS8QA2E2032WWH7EW",
+        "audit-01KPV2CBPZWYXMSR81G38F0VKR",
+        "audit-01KPTW4DXXEZQR0S69TPVKVG6W"
+      ]
+    },
+    {
+      "journey": "Cancel Order",
+      "issue_title": "Cancel flow bypasses tool:CheckTransactionCancellationEligibility — agent escalates or fails before self-service cancellation is attempted",
+      "description": "In cancellation sessions, the agent either transfers to human immediately after receiving the order number without checking eligibility, or fails mid-authentication without ever reaching the cancellation tools. tool:CheckTransactionCancellationEligibility is never invoked. When the transaction is already paid, the agent does not proactively offer the next logical path (refund information or dispute). One caller was left with a paid order that was never cancelled and no resolution offered.",
+      "impacted_count": 7,
+      "proposed_outcome": "IN 'Cancel Customer Order' block:\n  REQUIRED SEQUENCE before any transfer or outcome decision:\n    1. tool:CustomerByOrderNumber (must succeed)\n    2. tool:AttemptCvpAuthentication (must succeed)\n    3. tool:CheckTransactionCancellationEligibility\n  IF tool:CheckTransactionCancellationEligibility returns ELIGIBLE\n  >> proceed: tool:ConfirmCancellationIntent → tool:CareCancellation\n  IF tool:CheckTransactionCancellationEligibility returns INELIGIBLE (reason: already-paid)\n  >> inform caller the transfer has already been paid and cannot be cancelled\n  >> proactively offer: 'Would you like information about a refund, or would you like to speak with a specialist?'\n  >> do NOT transfer without offering this next step first\n  HARD RULE: tool:transfer must NOT be invoked in the cancel flow until steps 1–3 above have been attempted",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPT2QFF2J4PN14JCZQ87CVMG",
+        "audit-01KPVBEEJA0Y7D8ST44GR90NSW",
+        "audit-01KPTSWCZFXS0ACVFFZKHWMX4M"
+      ]
+    },
+    {
+      "journey": "Order Status",
+      "issue_title": "Missed or past-due ETA not flagged — agent treats overdue deliveries as normal in-transit status",
+      "description": "When tool:GetEstimatedDelivery returns an ETA date that is already in the past and the transfer is still showing as in-transit, the agent presents this to the caller as a normal status without any acknowledgement of the missed deadline. The agent then loops on generic delay explanations rather than escalating or creating a ticket. Callers with urgent money-at-stake situations are left with no actionable next step. One session showed ETA of April 21 (past due) presented without caveat on April 22.",
+      "impacted_count": 3,
+      "proposed_outcome": "IN 'Check Order ETA' / 'Check Order Status' journey block, after tool:GetEstimatedDelivery:\n  IF returned ETA date < today's date AND tool:DetailedOrder shows status != 'paid'\n  >> acknowledge missed delivery explicitly: 'I can see the estimated delivery date has passed and the funds have not yet been received. I'm sorry for the delay.'\n  >> call tool:CreateZendeskTicket(reason='delayed_transfer_past_eta', order_id=order_id)\n  >> provide ticket number to caller\n  >> offer transfer to live agent WITHOUT requiring caller to justify the request\n  DO NOT present a past ETA as current or loop on generic 'transfers can be delayed' explanations in this scenario",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPV7MMDTBXYMH9H7MFK2732R",
+        "audit-01KPTXP3815F0S4DEV2X5PTS4M",
+        "audit-01KPTV4NFWPM1YJ2KWTHH51WTR"
+      ]
+    },
+    {
+      "journey": "Technical",
+      "issue_title": "Agent escalates to human for self-serviceable technical intents without attempting KB lookup first",
+      "description": "For common technical issues — bank account verification, login problems, account locked, card removal — the agent transfers to human immediately (sometimes within 4 turns) without calling tool:SearchFAQKnowledge. All of these intents have documented KB articles that could resolve or triage the issue without a human. In one session, a 27-second call ended in a human transfer for a login issue. In another, 10+ transfer promises were made for a bank verification query that had a direct KB article available.",
+      "impacted_count": 7,
+      "proposed_outcome": "IN any journey block where intent matches [verify_bank_account, login_issue, account_locked, remove_payment_method, account_reactivation, technician_problem]:\n  BEFORE invoking tool:transfer:\n  >> call tool:SearchFAQKnowledge(query=caller_stated_intent)\n  >> IF KB result confidence >= sufficient: present self-service steps to caller\n  >> ask: 'Does that help, or would you still like to speak with a team member?'\n  >> IF caller confirms self-service resolved issue: end call\n  >> IF caller still requests human OR KB result is insufficient: invoke tool:CreateZendeskTicket(reason=intent) then tool:transfer\n  HARD RULE: tool:transfer must NOT be invoked for the above intent categories before at least one tool:SearchFAQKnowledge call has been made and its result presented to the caller",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPV5CC1CRPYXB94K6S4YQDPW",
+        "audit-01KPVD10D3A9S748T7BEGK21JG",
+        "audit-01KPTJ74PDGEXQPBMDC2PNXVMR"
+      ]
+    },
+    {
+      "journey": "Authentication",
+      "issue_title": "CVP and tool:GetEstimatedDelivery called before tool:CustomerByOrderNumber succeeds — auth gate not enforced sequentially",
+      "description": "Several agents invoke tool:AttemptCvpAuthentication or tool:GetEstimatedDelivery before tool:CustomerByOrderNumber has returned a successful customer record. This generates authentication errors and in some cases exposes order details (including invented or unverified order numbers) to unverified callers. The mandated sequence — CustomerByOrderNumber first, then CVP, then post-auth tools — is not enforced as a hard pre-condition.",
+      "impacted_count": 5,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block:\n  ENFORCE SEQUENTIAL GATE:\n    Step 1: tool:CustomerByOrderNumber must return success BEFORE any CVP question is asked\n    Step 2: tool:AttemptCvpAuthentication must return success BEFORE tool:GetEstimatedDelivery, tool:OrderOverview, or tool:DetailedOrder is called\n  IF tool:CustomerByOrderNumber fails\n  >> do NOT proceed to CVP questions\n  >> pivot to tool:CustomerByTelephone fallback (see issue #3)\n  IF agent attempts to call tool:AttemptCvpAuthentication without a prior successful tool:CustomerByOrderNumber response\n  >> block the call and return agent to order-number collection step\n  HARD RULE: order numbers must never be shared with the caller mid-call if they were generated or inferred rather than returned by a successful tool:CustomerByOrderNumber response",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPTXP3815F0S4DEV2X5PTS4M",
+        "audit-01KPTV4NFWPM1YJ2KWTHH51WTR",
+        "audit-01KPTVRMW8A9N42V7S30DRKB1R"
+      ]
+    },
+    {
+      "journey": "Complaint",
+      "issue_title": "'Paid but not received' transfers not escalated — agent loops on generic status instead of using DetailedOrder and creating ticket",
+      "description": "When a caller reports that a transfer has been marked 'paid' for multiple days but the recipient has not received the funds, the agent loops on generic status information (often re-reading bank details the caller already has) rather than escalating. tool:DetailedOrder is not used to retrieve correspondent and payout details, and no Zendesk ticket is created. Caller frustration escalates to profanity with no de-escalation path, and repeated explicit requests for a human are ignored.",
+      "impacted_count": 3,
+      "proposed_outcome": "IN 'Check Order Status' block:\n  IF order status == 'paid' AND caller reports recipient has NOT received funds AND days_since_paid > 2\n  >> complete tool:AttemptCvpAuthentication if not already done\n  >> call tool:DetailedOrder to retrieve correspondent and payout details (do NOT ask caller for recipient name or bank details)\n  >> call tool:CreateZendeskTicket(reason='paid_transfer_not_received_by_recipient', order_id=order_id, days_overdue=N)\n  >> share ticket number with caller as confirmation of escalation\n  >> inform caller: 'I've raised this with our investigations team. You'll receive a follow-up within [SLA hours].'\n  IF caller requests a human agent 3+ times during this flow\n  >> treat as mandatory transfer trigger — do NOT continue self-service loop\n  >> execute tool:transfer immediately after ticket creation",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPV1V9N0E3WMD8P6S49BW55W",
+        "audit-01KPTGYHCVVCD8C2YYCZXG7C2M",
+        "audit-01KPV7MMDTBXYMH9H7MFK2732R"
+      ]
+    },
+    {
+      "journey": "General Info",
+      "issue_title": "Agent escalates or loops for self-serviceable general info queries without calling tool:SearchFAQKnowledge",
+      "description": "For callers asking about sending money, card removal, transfer timing, or how to use the app, the agent either attempts to transfer to a human immediately or loops on the same KB-unsupported response without invoking tool:SearchFAQKnowledge. In one session, 9 KB searches were made for branch availability but the correct article was never surfaced. In another, a card removal query nearly resulted in a human transfer when a single FAQ lookup would have resolved it in one turn.",
+      "impacted_count": 4,
+      "proposed_outcome": "IN 'General Info' / app-help / account-management journey blocks:\n  WHEN intent matches [remove_payment_method, how_to_send_money, transfer_timing, app_guidance, branch_availability]\n  >> call tool:SearchFAQKnowledge(query=intent_description) immediately — BEFORE any transfer attempt\n  >> IF result confidence == sufficient: present self-service steps within 2 turns\n  >> IF result confidence == insufficient after 2 distinct queries on same topic\n  >> call tool:CreateZendeskTicket(reason='app_ui_issue' or 'general_info_unresolved', summary=conversation_summary)\n  >> offer callback or transfer to human\n  HARD RULE: tool:transfer must NOT be invoked for general-info intents before at least one tool:SearchFAQKnowledge call and result presentation",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPVQQ06T5K57NWBTQR037TEW",
+        "audit-01KPV16401X8MBW14CAXJ50KGG",
+        "audit-01KPV6F5B45DD425G8PRF5M9WR"
+      ]
+    },
+    {
+      "journey": "Authentication",
+      "issue_title": "Recipient callers and in-person cash-deposit callers have no alternative identification path — order-number loop is inapplicable",
+      "description": "Callers who are recipients (not the sender) or who completed an in-person cash deposit do not have a Ria order number in the standard format. The agent nonetheless loops demanding the order number without offering any alternative. No tool:CustomerByTelephone lookup is attempted and no KB article on cash deposit tracking is surfaced. Callers are left with no resolution path for funds they cannot access.",
+      "impacted_count": 3,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block:\n  IF caller states they are the RECIPIENT (not the sender) OR states they have no order number and describe a cash deposit / in-person transaction\n  >> do NOT continue to request a standard Ria order number\n  >> call tool:CustomerByTelephone using caller ANI to attempt identification\n  >> IF CustomerByTelephone fails: call tool:SearchFAQKnowledge(query='cash deposit reference number tracking') and present guidance\n  >> advise recipient callers to: (1) contact the sender for the order number, AND (2) present their withdrawal PIN at the physical location\n  >> IF issue remains unresolved: call tool:CreateZendeskTicket(reason='recipient_pickup_issue' or 'cash_deposit_not_reflected', summary=caller_description)\n  HARD RULE: never loop more than once on order-number request when caller has explicitly stated they do not have one",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPTSYZE6A4MZFYYJTV05BW9G",
+        "audit-01KPV0HYFN0E2XBGHM0RXPJEGW",
+        "audit-01KPT7QK8AKBJWE32FF0SA2D3R"
+      ]
+    },
+    {
+      "journey": "Escalation",
+      "issue_title": "Transfer attempted during offline hours with no prior warning and no alternative resolution path offered",
+      "description": "In several sessions the agent invokes tool:transfer during hours when no agents are available, receives an offline-hours response, but does not inform the caller of this before the attempt or provide a meaningful alternative (callback window, Zendesk ticket). The caller is simply left without a transfer and no further help. One session also saw the agent suggest online chat as a fallback without confirming whether the caller's channel (agent vs. customer) is supported there.",
+      "impacted_count": 2,
+      "proposed_outcome": "IN 'Transfer to Human' journey block:\n  BEFORE invoking tool:transfer:\n  >> check tool:transfer availability / operating hours\n  IF offline hours are detected BEFORE transfer attempt\n  >> inform caller in session language: 'Our team is not available right now. I can create a support ticket and they will call you back during [operating hours].'\n  >> call tool:CreateZendeskTicket(reason=captured_intent, callback_requested=true)\n  >> provide ticket reference number\n  IF tool:transfer returns offline-hours AFTER attempt\n  >> same Zendesk ticket fallback path as above\n  >> do NOT suggest online chat as a fallback without first confirming the channel is available and appropriate for the caller type",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPVBJ9RQP098PVHB0SWNDF1M",
+        "audit-01KPVA6SM0CNRWHTB2FG28ZYKM"
+      ]
+    },
+    {
+      "journey": "Authentication",
+      "issue_title": "CVP retry feedback exposes full PII set — all three collected values read back after failure",
+      "description": "After tool:AttemptCvpAuthentication fails, agents in multiple sessions read all three CVP parameters back to the caller verbatim in a single turn (full name, destination country, and transaction amount). This unnecessarily exposes partial PII in the transcript and on the call recording, and could assist fraud by confirming which fields were accepted. The correct behaviour is to probe only the single most likely mismatched field.",
+      "impacted_count": 4,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block, post tool:AttemptCvpAuthentication failure:\n  DO NOT read back all three CVP values in any single turn\n  INSTEAD: identify the field most likely to be incorrect (typically the amount field, which depends on currency and fee inclusion)\n  >> ask caller to re-confirm ONLY that field: 'Could you double-check the total amount you paid, including any fees, in the currency you used to send?'\n  >> if name is suspect: 'Could you spell your full name as it appears on your Ria account?'\n  >> if country is suspect: 'Can you confirm the country the money was sent to?'\n  NEVER enumerate all three failed fields in a single response\n  NEVER confirm to the caller which fields were matched and which were not",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPTHNT5Q5ZZAV8DHA5QZPNXW",
+        "audit-01KPTTW3MQXG99PJ1MRE3BNY4G",
+        "audit-01KPTSWCZFXS0ACVFFZKHWMX4M"
+      ]
+    },
+    {
+      "journey": "Greeting",
+      "issue_title": "Greeting defaults to wrong language — agent opens in French or Italian when caller locale is English or Spanish",
+      "description": "Several sessions begin with the agent greeting in the wrong language (French 'Bonjour' to English-speaking callers, Italian to Spanish speakers), before partially correcting mid-conversation. This creates an immediately poor experience and in some cases triggers cascading language-switching loops. The root cause is that the session language is not being set from the transcription locale or caller's initial speech prior to the greeting.",
+      "impacted_count": 4,
+      "proposed_outcome": "IN Greeting block (before first agent utterance):\n  IF transcription_locale is available AND is not ambiguous\n  >> set session_language = transcription_locale language\n  >> deliver greeting in that language\n  IF transcription_locale is not available or is ambiguous\n  >> deliver greeting in the default language (e.g., English or Spanish based on dial-in number)\n  >> immediately offer language options: 'I can also help in Spanish, French, German, or Italian.'\n  IF caller's first utterance is in a different language from the greeting\n  >> switch immediately and confirm: 'Of course, I'll continue in [language].'\n  HARD RULE: the agent must never oscillate between the greeting language and the detected caller language within the first 3 turns",
+      "severity": "Medium",
+      "reference_sessions": [
+        "audit-01KPV2CBPZWYXMSR81G38F0VKR",
+        "audit-01KPTA49V8EAAFZG1W4ZHTNSZG",
+        "audit-01KPV0ZXS58XHRY7MBK20RYK8R"
+      ]
+    },
+    {
+      "journey": "Escalation",
+      "issue_title": "Fraud reporting intent handled without capturing details or creating Zendesk ticket pre-transfer",
+      "description": "When a caller reports being a victim of fraud, the agent transfers immediately to a specialist team without collecting any transaction details, authenticating the caller, creating a Zendesk ticket, or offering KB guidance on what the fraud team will need. This means the receiving human agent has no context, and if the transfer fails the fraud report is entirely lost with no record.",
+      "impacted_count": 1,
+      "proposed_outcome": "IN 'Intents Where User Needs to Authenticate' block, when intent == 'fraud_report':\n  STEP 1: call tool:CustomerByOrderNumber if caller can provide order number (one attempt only)\n  STEP 2: brief caller on what the fraud team will need (transaction date, amount, recipient, how fraud occurred)\n  STEP 3: call tool:CreateZendeskTicket(reason='fraudulent_transaction', summary=caller_account_of_fraud, order_id=best_effort)\n  STEP 4: inform caller of ticket reference number\n  STEP 5: invoke tool:transfer to fraud specialist team\n  HARD RULE: do NOT skip steps 2–4 even if caller is distressed or requests immediate transfer — ticket creation ensures continuity if transfer fails",
+      "severity": "High",
+      "reference_sessions": [
+        "audit-01KPT992VFCW5ZAGJ1AA7NKPJG"
+      ]
+    }
+  ]
+}
+```
