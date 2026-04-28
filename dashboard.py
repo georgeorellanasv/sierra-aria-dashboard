@@ -635,6 +635,7 @@ PAGES_MAIN = {
 PAGES_ADV = {
     "Investigate":   "🧭",
     "Simulations":   "🧪",
+    "Txn Status":    "💳",
 }
 PAGES = {**PAGES_MAIN, **PAGES_ADV}
 
@@ -5425,6 +5426,559 @@ def page_po_recs():
 
 
 # ---------------------------------------------------------------------------
+# PAGE — Transaction Status Diagnostic
+# ---------------------------------------------------------------------------
+
+def page_txn_status():
+    st.title(_t("💳  Diagnóstico — Transaction Status",
+                "💳  Diagnostic — Transaction Status"))
+    st.caption(_t(
+        "Análisis exclusivo de las 21 sesiones clasificadas como `transaction_status`. "
+        "Este es el intent más crítico del agente: 100% de las sesiones tienen severidad "
+        "High o Critical — ninguna Low o Medium.",
+        "Deep-dive into the 21 sessions classified as `transaction_status`. "
+        "This is the agent's most critical intent: 100% of sessions are High or Critical "
+        "severity — zero Low or Medium.",
+    ))
+
+    # ── Data load ─────────────────────────────────────────────────────────
+    sessions_all = load_sessions()
+    monitors_all = load_monitors()
+    tags_all     = load_tags()
+    traces_all   = load_traces()
+
+    ts = sessions_all[sessions_all["category"] == "transaction_status"].copy()
+    ts_ids = set(ts["id"])
+
+    monitors = monitors_all[monitors_all["session_id"].isin(ts_ids)]
+    tags     = tags_all[tags_all["session_id"].isin(ts_ids)]
+    traces   = traces_all[traces_all["session_id"].isin(ts_ids)]
+
+    n = len(ts)
+    if n == 0:
+        st.warning("No se encontraron sesiones con category=transaction_status.")
+        return
+
+    fired_looping    = int((monitors[monitors["name"]=="Agent Looping"]["detected"]).sum())
+    fired_frustration= int((monitors[monitors["name"]=="Frustration Increase"]["detected"]).sum())
+    fired_transfer   = int((monitors[monitors["name"]=="False Transfer"]["detected"]).sum())
+
+    oo_inv  = int((tags["tag"]=="tool:order-overview:invoked").sum())
+    oo_fail = int((tags["tag"]=="tool:order-overview:failed").sum())
+    unsupp  = int(tags["tag"].str.startswith("unsupportedIntent").sum())
+    taking_long = int((tags["tag"]=="intent:transaction:taking-too-long").sum())
+
+    tabs = st.tabs([
+        _t("📊 Snapshot",           "📊 Snapshot"),
+        _t("🔍 ¿Por qué falla?",   "🔍 Why does it fail?"),
+        _t("🛤️  Journey",          "🛤️  Journey"),
+        _t("✅ Recomendaciones",   "✅ Recommendations"),
+    ])
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 1 — SNAPSHOT
+    # ══════════════════════════════════════════════════════════════════════
+    with tabs[0]:
+        st.markdown(_t(
+            "### El intent de transaction status está roto al 100%",
+            "### The transaction status intent is 100% broken",
+        ))
+        st.error(_t(
+            "**0 de 21 sesiones** tienen severidad Low o Medium. "
+            "Todas son High o Critical. Este intent no tiene un solo caso de éxito limpio "
+            "en el dataset — lo que significa que cada caller que llama preguntando por "
+            "el estado de su transferencia sale con fricción.",
+            "**0 of 21 sessions** have Low or Medium severity. "
+            "All are High or Critical. This intent does not have a single clean success case "
+            "in the dataset — meaning every caller who phones to ask about their transfer "
+            "status leaves with friction.",
+        ))
+
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        k1.metric(_t("Sesiones total", "Total sessions"), n)
+        k2.metric("Critical", int((ts["severity"]=="Critical").sum()),
+                  f"{int((ts['severity']=='Critical').sum())/n*100:.0f}%", delta_color="inverse")
+        k3.metric("High", int((ts["severity"]=="High").sum()),
+                  f"{int((ts['severity']=='High').sum())/n*100:.0f}%", delta_color="inverse")
+        k4.metric(_t("Agent Looping", "Agent Looping"),
+                  f"{fired_looping}/{n}", f"{fired_looping/n*100:.0f}%", delta_color="inverse")
+        k5.metric(_t("OrderOverview falla", "OrderOverview fails"),
+                  f"{oo_fail}/{oo_inv}", f"{oo_fail/max(oo_inv,1)*100:.0f}%", delta_color="inverse")
+        k6.metric(_t("Duración media", "Avg duration"),
+                  f"{int(ts['duration_seconds'].mean())}s")
+
+        st.markdown("---")
+        col_sev, col_dur = st.columns(2)
+
+        with col_sev:
+            st.markdown(_t("#### Severidad — ninguna sesión es Low o Medium",
+                           "#### Severity — no session is Low or Medium"))
+            sev_counts = ts["severity"].value_counts().reindex(
+                ["Critical","High","Medium","Low"], fill_value=0
+            )
+            fig_sev = go.Figure(go.Bar(
+                x=sev_counts.index.tolist(),
+                y=sev_counts.values.tolist(),
+                marker_color=["#c44f3a","#d97e5a","#c9a449","#6c8d5a"],
+                text=sev_counts.values.tolist(), textposition="outside",
+            ))
+            fig_sev.update_layout(height=280, margin=dict(l=5,r=5,t=10,b=5),
+                                   plot_bgcolor="#fff",
+                                   xaxis_title="", yaxis_title=_t("Sesiones","Sessions"))
+            st.plotly_chart(fig_sev, use_container_width=True)
+
+        with col_dur:
+            st.markdown(_t("#### Duración de llamada (segundos)",
+                           "#### Call duration (seconds)"))
+            dur_vals = ts["duration_seconds"].dropna().astype(int).tolist()
+            fig_dur = go.Figure(go.Histogram(
+                x=dur_vals, nbinsx=10,
+                marker_color="#CC785C", opacity=0.85,
+            ))
+            fig_dur.add_vline(x=int(ts["duration_seconds"].mean()),
+                              line_dash="dot", line_color="#1F1D1B",
+                              annotation_text=_t("Media","Mean"),
+                              annotation_position="top right")
+            fig_dur.update_layout(height=280, margin=dict(l=5,r=5,t=10,b=5),
+                                   plot_bgcolor="#fff",
+                                   xaxis_title="s", yaxis_title=_t("Sesiones","Sessions"))
+            st.plotly_chart(fig_dur, use_container_width=True)
+
+        # Monitor breakdown
+        st.markdown("---")
+        st.markdown(_t("#### Monitores en transaction_status vs. resto del dataset",
+                       "#### Monitors in transaction_status vs. rest of dataset"))
+        st.caption(_t(
+            "El 67% de Agent Looping en este intent dobla la tasa global (40%). "
+            "Transaction status tiene la mayor concentración de loops del dataset.",
+            "The 67% Agent Looping rate in this intent is nearly double the global rate (40%). "
+            "Transaction status has the highest loop concentration in the dataset.",
+        ))
+        mon_data = {
+            _t("Monitor","Monitor"):
+                ["Agent Looping","Frustration Increase","False Transfer","Repeated Escalation"],
+            _t("txn_status (21 ses.)","txn_status (21 ses.)"):
+                [f"{fired_looping}/21 ({fired_looping/21*100:.0f}%)",
+                 f"{fired_frustration}/21 ({fired_frustration/21*100:.0f}%)",
+                 f"{fired_transfer}/21 ({fired_transfer/21*100:.0f}%)", "0/21 (0%)"],
+            _t("Global (111 ses.)","Global (111 ses.)"):
+                ["44/111 (40%)","12/111 (11%)","13/111 (12%)","3/111 (3%)"],
+            _t("¿Peor en txn_status?","Worse in txn_status?"):
+                ["🔴 Sí — +27pp","🟡 Similar","🟢 Mejor","🟢 Mejor"]
+                if st.session_state.get("lang","es") == "es" else
+                ["🔴 Yes — +27pp","🟡 Similar","🟢 Better","🟢 Better"],
+        }
+        st.dataframe(mon_data, use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 2 — WHY DOES IT FAIL
+    # ══════════════════════════════════════════════════════════════════════
+    with tabs[1]:
+        st.markdown(_t("### Las 5 causas raíz de fracaso en transaction status",
+                       "### The 5 root causes of failure in transaction status"))
+
+        causes = [
+            {
+                "n": "1",
+                "title_es": "OrderOverview falla en 2 de cada 3 invocaciones",
+                "title_en": "OrderOverview fails 2 out of every 3 invocations",
+                "data_es":  f"tag `tool:order-overview:failed` en {oo_fail}/21 sesiones ({oo_fail/n*100:.0f}%). "
+                            f"Invocado en {oo_inv}/21 pero exitoso solo en {oo_inv-oo_fail}. "
+                            "Tasa de fallo: 67%.",
+                "data_en":  f"tag `tool:order-overview:failed` in {oo_fail}/21 sessions ({oo_fail/n*100:.0f}%). "
+                            f"Invoked in {oo_inv}/21 but successful in only {oo_inv-oo_fail}. "
+                            "Failure rate: 67%.",
+                "impact_es":"Cuando OrderOverview falla, el agente no tiene estado de la orden — "
+                            "la razón principal por la que llamó el cliente. Sin fallback, el agente "
+                            "transfiere o entra en loop.",
+                "impact_en":"When OrderOverview fails, the agent has no order status — "
+                            "the primary reason the customer called. Without a fallback, the agent "
+                            "transfers or loops.",
+                "color": "#c44f3a",
+            },
+            {
+                "n": "2",
+                "title_es": "Agent Looping en 67% de las sesiones (vs. 40% global)",
+                "title_en": "Agent Looping in 67% of sessions (vs. 40% globally)",
+                "data_es":  f"Monitor Agent Looping disparó en {fired_looping}/21 sesiones. "
+                            "Tasa global en el dataset: 40%. En transaction status: 67%. "
+                            "Sin recovery flow configurado.",
+                "data_en":  f"Agent Looping monitor fired in {fired_looping}/21 sessions. "
+                            "Global rate in dataset: 40%. In transaction status: 67%. "
+                            "No recovery flow configured.",
+                "impact_es":"El caller llama para saber el estado de su dinero. "
+                            "El agente entra en loop recogiendo el número de orden. "
+                            "Cada re-pregunta es 30-60s adicionales de frustración.",
+                "impact_en":"The caller phones to know where their money is. "
+                            "The agent loops collecting the order number. "
+                            "Each re-ask is an additional 30-60 seconds of frustration.",
+                "color": "#c44f3a",
+            },
+            {
+                "n": "3",
+                "title_es": "El intent no se reconoce en 9 de 21 sesiones",
+                "title_en": "The intent is not recognised in 9 of 21 sessions",
+                "data_es":  f"Tag `unsupportedIntent` en {unsupp} sesiones. "
+                            "Sub-tag más frecuente: `transaction-status-not-recognized` (7x). "
+                            "El agente recupera la orden pero no puede rutear al journey correcto.",
+                "data_en":  f"Tag `unsupportedIntent` in {unsupp} sessions. "
+                            "Most frequent sub-tag: `transaction-status-not-recognized` (7x). "
+                            "The agent retrieves the order but cannot route to the correct journey.",
+                "impact_es":"Un caller que pregunta '¿dónde está mi transferencia?' "
+                            "es ruteado a un unsupportedIntent — la pregunta más básica "
+                            "de este intent no tiene un journey explícito.",
+                "impact_en":"A caller asking 'where is my transfer?' is routed to an "
+                            "unsupportedIntent — the most basic question for this intent "
+                            "has no explicit journey.",
+                "color": "#c44f3a",
+            },
+            {
+                "n": "4",
+                "title_es": "62% de sesiones involucran queja por demora",
+                "title_en": "62% of sessions involve a delay complaint",
+                "data_es":  f"Tag `intent:transaction:taking-too-long` en {taking_long}/21 sesiones ({taking_long/n*100:.0f}%). "
+                            "El agente no tiene un journey dedicado a este sub-intent — "
+                            "lo rutea genéricamente a Check Order Status.",
+                "data_en":  f"Tag `intent:transaction:taking-too-long` in {taking_long}/21 sessions ({taking_long/n*100:.0f}%). "
+                            "The agent has no dedicated journey for this sub-intent — "
+                            "it routes generically to Check Order Status.",
+                "impact_es":"El caller que lleva días esperando necesita una respuesta diferente "
+                            "a 'su transferencia está en proceso'. Sin un journey de delayed transfer, "
+                            "el agente da la respuesta genérica y el caller escala.",
+                "impact_en":"A caller who has been waiting days needs a different answer "
+                            "than 'your transfer is in progress'. Without a delayed-transfer journey, "
+                            "the agent gives the generic response and the caller escalates.",
+                "color": "#d97e5a",
+            },
+            {
+                "n": "5",
+                "title_es": "Multi-idioma no manejado (ES + FR en el mismo dataset)",
+                "title_en": "Multi-language not handled (ES + FR in the same dataset)",
+                "data_es":  "Tag `language:es` en 10 sesiones, `language:fr` en 7. "
+                            "Pain points recurrentes: agente mezcla inglés y español, "
+                            "o inglés y francés mid-call. Servicio en ES/IT/DE/FR actualmente pausado.",
+                "data_en":  "Tag `language:es` in 10 sessions, `language:fr` in 7. "
+                            "Recurring pain points: agent mixes English and Spanish, "
+                            "or English and French mid-call. ES/IT/DE/FR service currently paused.",
+                "impact_es":"Un caller hispanohablante que no recibe respuesta en español "
+                            "para saber dónde está su dinero abandonará la llamada — "
+                            "y probablemente la empresa.",
+                "impact_en":"A Spanish-speaking caller who does not get a response in Spanish "
+                            "to find out where their money is will abandon the call — "
+                            "and probably the company.",
+                "color": "#d97e5a",
+            },
+        ]
+
+        for c in causes:
+            with st.container(border=True):
+                title = c["title_es"] if st.session_state.get("lang","es")=="es" else c["title_en"]
+                data  = c["data_es"]  if st.session_state.get("lang","es")=="es" else c["data_en"]
+                impact= c["impact_es"] if st.session_state.get("lang","es")=="es" else c["impact_en"]
+                st.markdown(
+                    f'<span style="background:{c["color"]};color:#fff;padding:2px 10px;'
+                    f'border-radius:3px;font-size:0.72rem;font-weight:700;'
+                    f'letter-spacing:0.07em;text-transform:uppercase">#{c["n"]}</span>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"**{title}**")
+                d_col, i_col = st.columns(2)
+                with d_col:
+                    st.markdown(f"📊 **{_t('Evidencia','Evidence')}:** {data}")
+                with i_col:
+                    st.markdown(f"⚡ **{_t('Impacto CX','CX Impact')}:** {impact}")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 3 — JOURNEY BREAKDOWN
+    # ══════════════════════════════════════════════════════════════════════
+    with tabs[2]:
+        st.markdown(_t(
+            "### Las 3 sesiones pasan por los mismos 3 journey blocks",
+            "### All 21 sessions pass through the same 3 journey blocks",
+        ))
+        st.caption(_t(
+            "100% de las sesiones de transaction_status tocan los bloques de Auth, Select Order y Check Order Status. "
+            "El problema no es la cobertura de journeys — es la ejecución dentro de cada bloque.",
+            "100% of transaction_status sessions touch the Auth, Select Order and Check Order Status blocks. "
+            "The problem is not journey coverage — it is execution within each block.",
+        ))
+
+        jb1, jb2, jb3 = st.columns(3)
+
+        with jb1:
+            with st.container(border=True):
+                st.markdown("#### 🔐 Intents Where User Needs to Authenticate")
+                st.markdown(_t("**21/21 sesiones** — bloque de entrada obligatorio.",
+                               "**21/21 sessions** — mandatory entry block."))
+                st.markdown(_t(
+                    "**Problemas observados:**\n"
+                    "- CVP loop en 67% (Agent Looping monitor)\n"
+                    "- Preguntas CVP incorrectas en algunas sesiones\n"
+                    "- CustomerByTelephone **nunca invocado** — 0 veces\n"
+                    "- Agentes internos ruteados por flow de cliente",
+                    "**Observed problems:**\n"
+                    "- CVP loop in 67% (Agent Looping monitor)\n"
+                    "- Wrong CVP questions in some sessions\n"
+                    "- CustomerByTelephone **never invoked** — 0 times\n"
+                    "- Internal agents routed through customer flow",
+                ))
+                st.error(_t("Gap PO-1 + PO-2 activos aquí.",
+                            "PO-1 + PO-2 gaps active here."))
+
+        with jb2:
+            with st.container(border=True):
+                st.markdown("#### 📋 Select Order")
+                st.markdown(_t("**21/21 sesiones** — selección de transacción.",
+                               "**21/21 sessions** — transaction selection."))
+                st.markdown(_t(
+                    "**Problemas observados:**\n"
+                    f"- `unsupportedIntent:transaction-status-not-recognized` en 7 ses.\n"
+                    "- El agente recupera la orden pero no puede proceder\n"
+                    "- Sin fallback cuando la selección falla\n"
+                    "- `transaction:taking-too-long` no tiene sub-journey",
+                    "**Observed problems:**\n"
+                    f"- `unsupportedIntent:transaction-status-not-recognized` in 7 ses.\n"
+                    "- Agent retrieves the order but cannot proceed\n"
+                    "- No fallback when selection fails\n"
+                    "- `transaction:taking-too-long` has no sub-journey",
+                ))
+                st.warning(_t("Gap de routing y cobertura de sub-intents.",
+                              "Routing and sub-intent coverage gap."))
+
+        with jb3:
+            with st.container(border=True):
+                st.markdown("#### 📦 Check Order Status")
+                st.markdown(_t("**21/21 sesiones** — entrega del status.",
+                               "**21/21 sessions** — status delivery."))
+                st.markdown(_t(
+                    "**Problemas observados:**\n"
+                    f"- `tool:order-overview:failed` en {oo_fail}/21 ({oo_fail/n*100:.0f}%)\n"
+                    "- Tasa de fallo de OrderOverview: **67%**\n"
+                    "- Sin fallback a DetailedOrder cuando falla\n"
+                    "- Transfer durante horas fuera de servicio sin aviso",
+                    "**Observed problems:**\n"
+                    f"- `tool:order-overview:failed` in {oo_fail}/21 ({oo_fail/n*100:.0f}%)\n"
+                    "- OrderOverview failure rate: **67%**\n"
+                    "- No fallback to DetailedOrder when it fails\n"
+                    "- Transfer during out-of-hours without warning caller",
+                ))
+                st.error(_t("API reliability critical — sin fallback.",
+                            "API reliability critical — no fallback."))
+
+        st.markdown("---")
+        st.markdown(_t("#### Flujo de la llamada — dónde se rompe",
+                       "#### Call flow — where it breaks"))
+        st.markdown(_t(
+            "El journey tiene 5 pasos en serie. En transaction_status todos fallan en algún punto.",
+            "The journey has 5 serial steps. In transaction_status, all fail at some point.",
+        ))
+        flow_data = {
+            _t("Paso","Step"): [
+                "1. CustomerByTelephone (FoD)", "2. CVP Auth",
+                "3. Select Order", "4. OrderOverview", "5. Status entregado",
+            ],
+            _t("Estado","Status"): [
+                "❌ Nunca invocado" if st.session_state.get("lang","es")=="es" else "❌ Never invoked",
+                f"⚠️ Loop en {fired_looping}/21",
+                f"⚠️ Falla en {unsupp}/21" if st.session_state.get("lang","es")=="es" else f"⚠️ Fails in {unsupp}/21",
+                f"❌ Falla en {oo_fail}/{oo_inv}" if st.session_state.get("lang","es")=="es" else f"❌ Fails in {oo_fail}/{oo_inv}",
+                f"✅ Solo en {oo_inv - oo_fail}/21" if st.session_state.get("lang","es")=="es" else f"✅ Only in {oo_inv - oo_fail}/21",
+            ],
+            _t("Recomendación","Recommendation"): [
+                "PO-2", "PO-1 + PO-3", "Routing fix", "Fallback tool", "—",
+            ],
+        }
+        st.dataframe(flow_data, use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 4 — RECOMMENDATIONS
+    # ══════════════════════════════════════════════════════════════════════
+    with tabs[3]:
+        st.markdown(_t(
+            "### 6 recomendaciones priorizadas para transaction status",
+            "### 6 prioritised recommendations for transaction status",
+        ))
+        st.caption(_t(
+            "Ordenadas por impacto esperado. Ninguna requiere un tool completamente nuevo — "
+            "todas usan herramientas ya existentes o cambios de configuración en el Agent Builder.",
+            "Ordered by expected impact. None requires a completely new tool — "
+            "all use existing tools or configuration changes in the Agent Builder.",
+        ))
+
+        recs = [
+            {
+                "id": "TS-1",
+                "color": "#c44f3a",
+                "title_es": "Fallback de OrderOverview a DetailedOrder cuando falla",
+                "title_en": "Fallback from OrderOverview to DetailedOrder when it fails",
+                "problem_es": f"OrderOverview falla en {oo_fail}/{oo_inv} invocaciones (67%). "
+                              "No hay fallback — el agente queda sin estado de la orden.",
+                "problem_en": f"OrderOverview fails in {oo_fail}/{oo_inv} invocations (67%). "
+                              "No fallback — the agent is left without order status.",
+                "fix_es": "En el bloque Check Order Status: si `tool:OrderOverview` devuelve error, "
+                          "invocar inmediatamente `tool:DetailedOrder` con el mismo `orderId`. "
+                          "Si ambos fallan → `CreateZendeskTicket(reason='order_status_unavailable')`.",
+                "fix_en": "In the Check Order Status block: if `tool:OrderOverview` returns an error, "
+                          "immediately invoke `tool:DetailedOrder` with the same `orderId`. "
+                          "If both fail → `CreateZendeskTicket(reason='order_status_unavailable')`.",
+                "effort": _t("Bajo","Low"),
+                "tool": "DetailedOrder (existe) + CreateZendeskTicket (existe)",
+            },
+            {
+                "id": "TS-2",
+                "color": "#c44f3a",
+                "title_es": "Hard-exit CVP tras 2 intentos + CustomerByTelephone como paso 1",
+                "title_en": "CVP hard-exit after 2 attempts + CustomerByTelephone as step 1",
+                "problem_es": f"Agent Looping en {fired_looping}/21 sesiones (67%). "
+                              "SOP §5.3 no tiene límite de intentos. CustomerByTelephone: 0 invocaciones.",
+                "problem_en": f"Agent Looping in {fired_looping}/21 sessions (67%). "
+                              "SOP §5.3 has no attempt limit. CustomerByTelephone: 0 invocations.",
+                "fix_es": "1. Invocar `CustomerByTelephone(ani)` al inicio — elimina la necesidad de "
+                          "deletrear el número de orden en la mayoría de casos. "
+                          "2. Si CVP falla 2 veces: `CreateZendeskTicket` + informar al caller. No loop.",
+                "fix_en": "1. Invoke `CustomerByTelephone(ani)` at the start — eliminates the need to "
+                          "spell the order number in most cases. "
+                          "2. If CVP fails twice: `CreateZendeskTicket` + inform the caller. No loop.",
+                "effort": _t("Bajo-Medio","Low-Med"),
+                "tool": "CustomerByTelephone (existe) + CreateZendeskTicket (existe)",
+            },
+            {
+                "id": "TS-3",
+                "color": "#c44f3a",
+                "title_es": "Routing explícito para transaction-status-not-recognized",
+                "title_en": "Explicit routing for transaction-status-not-recognized",
+                "problem_es": f"7 sesiones con tag `unsupportedIntent:transaction-status-not-recognized`. "
+                              "El agente recupera la orden pero no puede continuar — "
+                              "no hay journey para este sub-intent.",
+                "problem_en": f"7 sessions with tag `unsupportedIntent:transaction-status-not-recognized`. "
+                              "The agent retrieves the order but cannot continue — "
+                              "no journey exists for this sub-intent.",
+                "fix_es": "Agregar regla de routing en el bloque Select Order: "
+                          "si intent contiene 'status', 'estado', 'where is', 'dónde está' → "
+                          "rutear a Check Order Status. No depender del sub-tag exacto.",
+                "fix_en": "Add routing rule in the Select Order block: "
+                          "if intent contains 'status', 'estado', 'where is', 'dónde está' → "
+                          "route to Check Order Status. Do not depend on the exact sub-tag.",
+                "effort": _t("Bajo","Low"),
+                "tool": _t("Cambio de configuración en Agent Builder — sin tool nuevo",
+                           "Agent Builder configuration change — no new tool"),
+            },
+            {
+                "id": "TS-4",
+                "color": "#d97e5a",
+                "title_es": "Sub-journey dedicado para 'transferencia con retraso'",
+                "title_en": "Dedicated sub-journey for 'delayed transfer'",
+                "problem_es": f"`intent:transaction:taking-too-long` en {taking_long}/21 sesiones ({taking_long/n*100:.0f}%). "
+                              "El agente ruteaa este intent a Check Order Status genérico — "
+                              "que responde 'en proceso' sin ofrecer siguiente paso.",
+                "problem_en": f"`intent:transaction:taking-too-long` in {taking_long}/21 sessions ({taking_long/n*100:.0f}%). "
+                              "The agent routes this intent to generic Check Order Status — "
+                              "which responds 'in progress' without offering a next step.",
+                "fix_es": "Crear un bloque 'Delayed Transfer': si ETA ya pasó → "
+                          "`CreateZendeskTicket(reason='delayed_transfer', priority=high)` + "
+                          "dar referencia al caller. Si ETA no ha pasado → explicar SLA y ofrecer "
+                          "SMS update cuando esté disponible.",
+                "fix_en": "Create a 'Delayed Transfer' block: if ETA has passed → "
+                          "`CreateZendeskTicket(reason='delayed_transfer', priority=high)` + "
+                          "give reference to caller. If ETA has not passed → explain SLA and offer "
+                          "SMS update when available.",
+                "effort": _t("Medio","Medium"),
+                "tool": "CreateZendeskTicket (existe) + GetEstimatedDelivery (existe)",
+            },
+            {
+                "id": "TS-5",
+                "color": "#d97e5a",
+                "title_es": "Activar Monitor-Triggered Recovery para Agent Looping",
+                "title_en": "Activate Monitor-Triggered Recovery for Agent Looping",
+                "problem_es": f"Agent Looping dispara en {fired_looping}/21 sesiones pero "
+                              "no activa ninguna acción correctiva. El agente continúa el loop.",
+                "problem_en": f"Agent Looping fires in {fired_looping}/21 sessions but "
+                              "does not trigger any corrective action. The agent continues looping.",
+                "fix_es": "En Global Rules: si Agent Looping dispara → interrumpir flujo actual → "
+                          "ofrecer 'buscarle por teléfono en lugar del número de orden' "
+                          "(CustomerByTelephone) → si falla → CreateZendeskTicket.",
+                "fix_en": "In Global Rules: if Agent Looping fires → interrupt current flow → "
+                          "offer 'look you up by phone instead of order number' "
+                          "(CustomerByTelephone) → if fails → CreateZendeskTicket.",
+                "effort": _t("Medio","Medium"),
+                "tool": "CustomerByTelephone (existe) + CreateZendeskTicket (existe)",
+            },
+            {
+                "id": "TS-6",
+                "color": "#c9a449",
+                "title_es": "Detección de idioma en Front of Door antes de auth",
+                "title_en": "Language detection at Front of Door before auth",
+                "problem_es": "10 sesiones en ES, 7 en FR. Pain points de mixing de idiomas "
+                              "en múltiples sesiones. Servicio en ES/IT/DE/FR actualmente pausado — "
+                              "este es posiblemente el motivo.",
+                "problem_en": "10 sessions in ES, 7 in FR. Language mixing pain points "
+                              "across multiple sessions. ES/IT/DE/FR service currently paused — "
+                              "this is likely the reason.",
+                "fix_es": "En Front of Door: detectar idioma del caller en el primer turno "
+                          "antes de cualquier otra acción. Si idioma no soportado → "
+                          "informar y escalar. Si soportado → fijar idioma para toda la llamada "
+                          "y no cambiar bajo ninguna circunstancia.",
+                "fix_en": "At Front of Door: detect caller language in the first turn "
+                          "before any other action. If language not supported → "
+                          "inform and escalate. If supported → lock language for the entire call "
+                          "and do not change under any circumstance.",
+                "effort": _t("Bajo","Low"),
+                "tool": _t("Cambio de Global Rules — sin tool nuevo",
+                           "Global Rules change — no new tool"),
+            },
+        ]
+
+        for r in recs:
+            with st.container(border=True):
+                lang = st.session_state.get("lang","es")
+                title   = r["title_es"]   if lang=="es" else r["title_en"]
+                problem = r["problem_es"] if lang=="es" else r["problem_en"]
+                fix     = r["fix_es"]     if lang=="es" else r["fix_en"]
+                st.markdown(
+                    f'<span style="background:{r["color"]};color:#fff;padding:2px 10px;'
+                    f'border-radius:3px;font-size:0.72rem;font-weight:700;'
+                    f'letter-spacing:0.07em">{r["id"]}</span>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"**{title}**")
+                c_prob, c_fix, c_meta = st.columns([2, 2, 1])
+                with c_prob:
+                    st.markdown(f"🔴 **{_t('Problema','Problem')}:** {problem}")
+                with c_fix:
+                    st.markdown(f"✅ **{_t('Fix','Fix')}:** {fix}")
+                with c_meta:
+                    st.metric(_t("Esfuerzo","Effort"), r["effort"])
+                    st.caption(f"🔧 {r['tool']}")
+
+        st.markdown("---")
+        summary_recs = {
+            "#": ["TS-1","TS-2","TS-3","TS-4","TS-5","TS-6"],
+            _t("Recomendación","Recommendation"): [
+                _t("Fallback OrderOverview → DetailedOrder",
+                   "Fallback OrderOverview → DetailedOrder"),
+                _t("Hard-exit CVP + CustomerByTelephone FoD",
+                   "CVP hard-exit + CustomerByTelephone FoD"),
+                _t("Routing para transaction-status-not-recognized",
+                   "Routing for transaction-status-not-recognized"),
+                _t("Sub-journey para delayed transfer",
+                   "Sub-journey for delayed transfer"),
+                _t("Monitor recovery para Agent Looping",
+                   "Monitor recovery for Agent Looping"),
+                _t("Language detection en Front of Door",
+                   "Language detection at Front of Door"),
+            ],
+            _t("Sesiones afectadas","Sessions affected"):
+                [f"{oo_fail}","21",f"{unsupp}",f"{taking_long}",f"{fired_looping}","17"],
+            _t("Esfuerzo","Effort"): [
+                _t("Bajo","Low"), _t("Bajo-Medio","Low-Med"), _t("Bajo","Low"),
+                _t("Medio","Medium"), _t("Medio","Medium"), _t("Bajo","Low"),
+            ],
+            _t("Tool nuevo","New tool"): ["No","No","No","No","No","No"],
+        }
+        st.dataframe(summary_recs, use_container_width=True, hide_index=True)
+
+
+# ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
 
@@ -5440,5 +5994,7 @@ elif page == "Strategic":
     page_strategic()
 elif page == "Simulations":
     page_simulations()
+elif page == "Txn Status":
+    page_txn_status()
 elif page == "Glossary":
     page_glossary()
