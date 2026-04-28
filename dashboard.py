@@ -1543,6 +1543,143 @@ def render_customer_journey_friction(sessions: pd.DataFrame,
     ))
     _analysis_block(bullets)
 
+    with st.expander(_t(
+        "📐  ¿Cómo se clasifica el nivel de fricción? — ver criterios por etapa",
+        "📐  How is friction level classified? — see criteria per stage",
+    )):
+        st.markdown(_t(
+            "Cada etapa recibe un nivel de fricción basado en el **% de sesiones con problema** "
+            "en esa etapa. La señal que cuenta como 'problema' varía por etapa — "
+            "aquí se detalla qué se mide en cada una.",
+            "Each stage receives a friction level based on the **% of sessions with a problem** "
+            "at that stage. The signal that counts as a 'problem' varies by stage — "
+            "here is exactly what is measured at each one.",
+        ))
+
+        # Friction level legend
+        lc1, lc2, lc3, lc4 = st.columns(4)
+        lc1.markdown("<div style='background:#fde8e4;border-left:3px solid #c44f3a;padding:0.5rem 0.8rem;border-radius:3px;font-size:0.82rem'>"
+                     "<b style='color:#c44f3a'>🔴 Critical</b><br>≥ 70% de sesiones con problema</div>", unsafe_allow_html=True)
+        lc2.markdown("<div style='background:#fdf0e8;border-left:3px solid #d97e5a;padding:0.5rem 0.8rem;border-radius:3px;font-size:0.82rem'>"
+                     "<b style='color:#d97e5a'>🟠 High</b><br>40% – 69%</div>", unsafe_allow_html=True)
+        lc3.markdown("<div style='background:#fdf9e8;border-left:3px solid #c9a449;padding:0.5rem 0.8rem;border-radius:3px;font-size:0.82rem'>"
+                     "<b style='color:#c9a449'>🟡 Medium</b><br>20% – 39%</div>", unsafe_allow_html=True)
+        lc4.markdown("<div style='background:#eef5eb;border-left:3px solid #6c8d5a;padding:0.5rem 0.8rem;border-radius:3px;font-size:0.82rem'>"
+                     "<b style='color:#6c8d5a'>🟢 Low</b><br>< 20%</div>", unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # Per-stage criteria
+        criteria = [
+            {
+                "stage":   _t("1. Greeting / Saludo", "1. Greeting"),
+                "pct":     df.iloc[0]["pct"],
+                "color":   df.iloc[0]["color"],
+                "signal":  _t(
+                    "Tag `cxi_outcome_dropoff_early` presente en la sesión — "
+                    "el caller colgó sin que se capturara ningún intent.",
+                    "Tag `cxi_outcome_dropoff_early` present in the session — "
+                    "the caller hung up before any intent was captured.",
+                ),
+                "why":     _t(
+                    "Mide callers que entran y salen sin interactuar. "
+                    "Causas típicas: llamada accidental, IVR lento, idioma incorrecto al inicio.",
+                    "Measures callers who enter and leave without interacting. "
+                    "Typical causes: accidental call, slow IVR, wrong language at start.",
+                ),
+            },
+            {
+                "stage":   _t("2. Reconocimiento de intent", "2. Intent recognition"),
+                "pct":     df.iloc[1]["pct"],
+                "color":   df.iloc[1]["color"],
+                "signal":  _t(
+                    "Tag con prefijo `unsupportedIntent:*` — el agente detectó la intención "
+                    "del caller pero no tiene un journey configurado para manejarla.",
+                    "Tag with prefix `unsupportedIntent:*` — the agent detected the caller's "
+                    "intent but has no configured journey to handle it.",
+                ),
+                "why":     _t(
+                    "Mide gaps de cobertura del Agent Builder. Si un caller dice 'quiero modificar "
+                    "mi transferencia' y no hay journey de modificaciones → `unsupportedIntent:modify`.",
+                    "Measures Agent Builder coverage gaps. If a caller says 'I want to modify "
+                    "my transfer' and there is no modifications journey → `unsupportedIntent:modify`.",
+                ),
+            },
+            {
+                "stage":   _t("3. Autenticación", "3. Authentication"),
+                "pct":     df.iloc[2]["pct"],
+                "color":   df.iloc[2]["color"],
+                "signal":  _t(
+                    "Tag `tool:cvp:failed` OR (`api:ria:authenticate:invoked` presente "
+                    "pero `api:ria:authenticate:success` ausente). "
+                    "Cuenta sesiones donde el CVP fue intentado pero no completado con éxito.",
+                    "Tag `tool:cvp:failed` OR (`api:ria:authenticate:invoked` present "
+                    "but `api:ria:authenticate:success` absent). "
+                    "Counts sessions where CVP was attempted but not completed successfully.",
+                ),
+                "why":     _t(
+                    "Etapa con mayor fricción estructural: el loop CVP sin hard-exit (PO-1) "
+                    "y la ausencia de CustomerByTelephone FoD (PO-2) confluyen aquí.",
+                    "Stage with the highest structural friction: the CVP loop without hard-exit (PO-1) "
+                    "and the absence of CustomerByTelephone FoD (PO-2) both converge here.",
+                ),
+            },
+            {
+                "stage":   _t("4. Búsqueda de orden", "4. Order lookup"),
+                "pct":     df.iloc[3]["pct"],
+                "color":   df.iloc[3]["color"],
+                "signal":  _t(
+                    "Tag `tool:order-overview:failed` — `OrderOverview` devolvió error "
+                    "y no hay fallback configurado para recuperar la sesión.",
+                    "Tag `tool:order-overview:failed` — `OrderOverview` returned an error "
+                    "and no fallback is configured to recover the session.",
+                ),
+                "why":     _t(
+                    "Mide fallos de integración backend. Cuando la API de Core-Care falla, "
+                    "el agente no sabe qué hacer y transfiere o entra en loop.",
+                    "Measures backend integration failures. When the Core-Care API fails, "
+                    "the agent does not know what to do and transfers or loops.",
+                ),
+            },
+            {
+                "stage":   _t("5. Resolución", "5. Resolution"),
+                "pct":     df.iloc[4]["pct"],
+                "color":   df.iloc[4]["color"],
+                "signal":  _t(
+                    "Monitor `Agent Looping` OR monitor `False Transfer` disparado en la sesión "
+                    "— el agente llegó hasta la acción final pero no pudo completarla.",
+                    "Monitor `Agent Looping` OR monitor `False Transfer` fired in the session — "
+                    "the agent reached the final action step but could not complete it.",
+                ),
+                "why":     _t(
+                    "Mide fallos en el último metro: transfer que no conecta, acción que se repite "
+                    "sin completar. El caller superó todas las etapas previas y aún así no resuelve.",
+                    "Measures last-mile failures: transfer that does not connect, action repeated "
+                    "without completing. The caller cleared all previous stages and still does not resolve.",
+                ),
+            },
+        ]
+
+        for c in criteria:
+            level_colors = {"#c44f3a": ("🔴", "Critical"), "#d97e5a": ("🟠", "High"),
+                            "#c9a449": ("🟡", "Medium"),  "#6c8d5a": ("🟢", "Low")}
+            emoji, level = level_colors.get(c["color"], ("⚪", "—"))
+            with st.container(border=True):
+                hcol, pcol = st.columns([4, 1])
+                with hcol:
+                    bg = c["color"]
+                    st.markdown(
+                        f"**{c['stage']}** &nbsp; "
+                        f"<span style='background:{bg};color:#fff;"
+                        f"padding:2px 8px;border-radius:2px;font-size:0.72rem;"
+                        f"font-weight:700'>{emoji} {level} · {c['pct']}%</span>",
+                        unsafe_allow_html=True,
+                    )
+                with pcol:
+                    st.metric(_t("Fricción", "Friction"), f"{c['pct']}%", label_visibility="collapsed")
+                st.markdown(f"**{_t('Señal medida', 'Signal measured')}:** {c['signal']}")
+                st.caption(f"**{_t('Por qué importa', 'Why it matters')}:** {c['why']}")
+
 
 def render_by_session(sessions_all, sessions, tags, monitors, traces):
     """Render the 'By session' view — quick-pick worst 3 + filters + picker + detail."""
