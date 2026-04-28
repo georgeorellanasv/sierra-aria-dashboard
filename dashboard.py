@@ -4459,37 +4459,135 @@ def page_po_recs():
             "Los monitores de Sierra detectan loops pero no tienen recovery flow",
             "Sierra monitors detect loops but are not wired to any recovery flow",
         ))
+        st.markdown(_t(
+            "**Qué dice el SOP (§11 — Compliance Checklist):** Valida que las reglas "
+            "estén configuradas. No define ninguna acción automática cuando un monitor dispara. "
+            "Sierra construyó estos monitores para ser triggers de comportamiento — hoy son solo telemetría.",
+            "**What the SOP says (§11 — Compliance Checklist):** Validates that rules are "
+            "configured. Does not define any automatic action when a monitor fires. "
+            "Sierra built these monitors to be behaviour triggers — today they are just telemetry.",
+        ))
+        mcol1, mcol2, mcol3 = st.columns(3)
+        mcol1.metric("Agent Looping", "44 / 111", "40%", delta_color="inverse")
+        mcol2.metric("False Transfer", "13 / 111", "12%", delta_color="inverse")
+        mcol3.metric("Frustration Increase", "12 / 111", "11%", delta_color="inverse")
+        st.markdown(_t(
+            "**Acción actual cuando disparan:** Ninguna. El agente continúa exactamente igual.",
+            "**Current action when they fire:** None. The agent continues exactly as before.",
+        ))
+        st.markdown("---")
+
+        mon_tab1, mon_tab2, mon_tab3 = st.tabs([
+            "🔁 Agent Looping (40%)",
+            "📞 False Transfer (12%)",
+            "😤 Frustration Increase (11%)",
+        ])
+
+        with mon_tab1:
+            st.markdown(_t(
+                "**¿Qué detecta?** El agente repite la misma pregunta varias veces sin avanzar. "
+                "El caller ya respondió — el agente no puede procesar o continuar.",
+                "**What does it detect?** The agent repeats the same question multiple times without "
+                "progressing. The caller already answered — the agent cannot process or continue.",
+            ))
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### ❌ AS-IS")
+                st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+🤖 <b>Aria:</b> ¿Me puede dar su número de orden?<br>
+👤 <b>Caller:</b> Sí, es ES-uno-dos-tres-cuatro-A<br>
+🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede repetir?<br>
+👤 <b>Caller:</b> ES… uno… dos… tres… cuatro… A<br>
+🔴 <i>[Monitor dispara — sin acción]</i><br>
+🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede deletrear?<br>
+👤 <b>Caller:</b> ¡Ya lo dije tres veces! <i>[cuelga]</i>
+</div>""", unsafe_allow_html=True)
+            with c2:
+                st.markdown("#### ✅ SHOULD-BE")
+                st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+🤖 <b>Aria:</b> ¿Me puede dar su número de orden?<br>
+👤 <b>Caller:</b> Sí, es ES-uno-dos-tres-cuatro-A<br>
+🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede repetir?<br>
+👤 <b>Caller:</b> ES… uno… dos… tres… cuatro… A<br>
+🟡 <i>[Monitor dispara → recovery activa]</i><br>
+🤖 <b>Aria:</b> Permítame intentarlo diferente — voy a buscarle por su número de teléfono. ¿Le parece bien?<br>
+👤 <b>Caller:</b> Sí, por favor.<br>
+✅ <i>CustomerByTelephone → cliente identificado → resolución</i>
+</div>""", unsafe_allow_html=True)
+            st.caption(_t("Tool de recovery: `CustomerByTelephone` — ya existe. Sin tool nuevo.",
+                          "Recovery tool: `CustomerByTelephone` — already exists. No new tool."))
+
+        with mon_tab2:
+            st.markdown(_t(
+                "**¿Qué detecta?** El agente anuncia una transferencia pero nunca la completa. "
+                "El caller queda en silencio o escucha el mismo anuncio en loop.",
+                "**What does it detect?** The agent announces a transfer but never completes it. "
+                "The caller is left in silence or hears the same announcement looping.",
+            ))
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### ❌ AS-IS")
+                st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>
+<i>[Transfer falla silenciosamente]</i><br>
+🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>
+🔴 <i>[Monitor dispara — sin acción]</i><br>
+🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>
+👤 <b>Caller:</b> ¿Pero qué está pasando? <i>[cuelga]</i>
+</div>""", unsafe_allow_html=True)
+            with c2:
+                st.markdown("#### ✅ SHOULD-BE")
+                st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>
+<i>[Transfer falla]</i><br>
+🟡 <i>[Monitor dispara → recovery activa]</i><br>
+🤖 <b>Aria:</b> Estoy teniendo dificultades para conectarle. Voy a crearle un ticket urgente para que un agente le contacte en menos de 2 horas.<br>
+👤 <b>Caller:</b> Sí, está bien.<br>
+✅ <i>CreateZendeskTicket → referencia #XXXXX → caller confirmado</i>
+</div>""", unsafe_allow_html=True)
+            st.caption(_t("Tool de recovery: `CreateZendeskTicket` — ya existe. Sin tool nuevo.",
+                          "Recovery tool: `CreateZendeskTicket` — already exists. No new tool."))
+
+        with mon_tab3:
+            st.markdown(_t(
+                "**¿Qué detecta?** El tono del caller escala — quejas explícitas, interrupciones, "
+                "alta carga emocional. El caller está perdiendo la paciencia con el bot.",
+                "**What does it detect?** The caller's tone escalates — explicit complaints, "
+                "interruptions, high emotional charge. The caller is losing patience with the bot.",
+            ))
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### ❌ AS-IS")
+                st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+👤 <b>Caller:</b> ¡Esto es ridículo! ¡Llevo 10 minutos y no resuelven nada!<br>
+🔴 <i>[Monitor dispara — sin acción]</i><br>
+🤖 <b>Aria:</b> Entiendo. ¿Me puede dar su número de orden?<br>
+👤 <b>Caller:</b> ¡YA LO DI DOS VECES! <i>[cuelga]</i>
+</div>""", unsafe_allow_html=True)
+            with c2:
+                st.markdown("#### ✅ SHOULD-BE")
+                st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+👤 <b>Caller:</b> ¡Esto es ridículo! ¡Llevo 10 minutos y no resuelven nada!<br>
+🟡 <i>[Monitor dispara → empathy mode activa]</i><br>
+🤖 <b>Aria:</b> Tiene toda la razón, lo siento mucho. No debería haber tomado tanto tiempo. Voy a conectarle directamente con un especialista que ya tendrá el contexto de su caso.<br>
+👤 <b>Caller:</b> Gracias, eso es lo que necesito.<br>
+✅ <i>transfer(priority=high, context=full_session)</i>
+</div>""", unsafe_allow_html=True)
+            st.caption(_t(
+                "No se piden más datos. El monitor activa transfer con contexto pre-cargado — el caller no repite nada.",
+                "No more data requested. Monitor activates transfer with pre-loaded context — caller repeats nothing.",
+            ))
+
+        st.markdown("---")
+        st.success(_t(
+            "**Impacto estimado:** Activar recovery flows en los 3 monitores convierte hasta un 40% "
+            "de las sesiones que hoy terminan en abandono en sesiones con resolución controlada. "
+            "No requiere tools nuevos — `CustomerByTelephone` y `CreateZendeskTicket` ya existen.",
+            "**Estimated impact:** Activating recovery flows on all 3 monitors converts up to 40% "
+            "of sessions that currently end in abandonment into sessions with a controlled resolution. "
+            "No new tools required — `CustomerByTelephone` and `CreateZendeskTicket` already exist.",
+        ))
         col_l, col_r = st.columns([2, 1])
-        with col_l:
-            st.markdown(_t(
-                "**Qué dice el SOP (§11 — Compliance Checklist):** Valida que las reglas "
-                "estén configuradas. No define ninguna acción automática cuando un monitor dispara.",
-                "**What the SOP says (§11 — Compliance Checklist):** Validates that rules are "
-                "configured. Does not define any automatic action when a monitor fires.",
-            ))
-            monitor_data = {
-                _t("Monitor", "Monitor"): ["Agent Looping", "False Transfer", "Frustration Increase"],
-                _t("Sesiones afectadas", "Sessions affected"): ["44 / 111 (40%)", "13 / 111 (12%)", "12 / 111 (11%)"],
-                _t("Acción al disparar", "Action on fire"): [
-                    _t("Ninguna — agente continúa en loop", "None — agent continues looping"),
-                    _t("Ninguna — agente repite el anuncio", "None — agent repeats the announcement"),
-                    _t("Ninguna — agente ignora la señal", "None — agent ignores the signal"),
-                ],
-            }
-            st.dataframe(monitor_data, use_container_width=True, hide_index=True)
-            st.markdown(_t(
-                "**Recomendación:** Agregar a Global Rules una sección *Monitor-Triggered Recovery*:",
-                "**Recommendation:** Add a *Monitor-Triggered Recovery* section to Global Rules:",
-            ))
-            st.code(
-                "Agent Looping dispara:\n"
-                "  → Interrumpir flujo → ofrecer (a) ruta alternativa o (b) Zendesk ticket\n\n"
-                "Frustration Increase dispara:\n"
-                "  → Activar empathy language → reducir speedbumps restantes\n\n"
-                "False Transfer dispara:\n"
-                "  → Verificar estado de transferencia antes de anunciar al caller",
-                language="text",
-            )
         with col_r:
             st.metric(_t("Sesiones con looping", "Sessions with looping"), "44 / 111")
             st.metric(_t("% del total", "% of total"), "40%")
