@@ -214,6 +214,352 @@ def load_issues_raw() -> list[dict]:
     return issues
 
 
+@st.cache_data(show_spinner=False)
+def load_all_messages() -> pd.DataFrame:
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql("SELECT session_id, role, text FROM messages", conn)
+    conn.close()
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Session Friction Score (SFS) — composite 0-100
+# 4 components mapped 1:1 to PO-1 / PO-2 / PO-3 / PO-4
+# ---------------------------------------------------------------------------
+
+import re, math
+
+_CVP_RE    = re.compile(r"cvp|authenticate", re.IGNORECASE)
+_PHONE_RE  = re.compile(r"customerByTelephone|lookupCustomer|getCustomerByPhone", re.IGNORECASE)
+_PHONE_TXT = re.compile(r"\b\+?\d[\d\s\-]{7,}\d\b")
+_CVP_Q_RE  = re.compile(
+    r"(full name|nombre completo|country.*sent|pa[ií]s.*env[ií]|amount.*paid|monto.*pag)",
+    re.IGNORECASE,
+)
+
+_INFORMATIONAL = {
+    "hours", "fees", "rates", "locations", "fx_inquiry", "general_info",
+    "service_hours", "branch_locator", "product_info", "status_check_no_auth",
+}
+
+_MON_W = {"Agent Looping": 12, "False Transfer": 10,
+          "Repeated Escalation": 8, "Frustration Increase": 7}
+_MON_BASE_MAX = sum(_MON_W.values())  # 37
+
+SFS_LEVELS = [
+    (0,  14, "Fluida",       "Smooth",   "#6c8d5a"),
+    (15, 34, "Friccionada",  "Friction", "#c9a449"),
+    (35, 59, "Bloqueada",    "Blocked",  "#d97e5a"),
+    (60, 100,"Crítica",      "Critical", "#c44f3a"),
+]
+
+
+def _sfs_level(score: int) -> tuple:
+    for lo, hi, es, en, color in SFS_LEVELS:
+        if lo <= score <= hi:
+            return es, en, color
+    return "Crítica", "Critical", "#c44f3a"
+
+
+def compute_friction_scores(
+    sessions: pd.DataFrame,
+    monitors: pd.DataFrame,
+    traces: pd.DataFrame,
+    tags: pd.DataFrame,
+    messages: pd.DataFrame,
+) -> pd.DataFrame:
+    """Return one row per session with SFS (0-100) and its 4 components."""
+
+    # Pre-group for speed
+    tr_by_sid  = traces.groupby("session_id")
+    mon_by_sid = monitors[monitors["detected"] == 1].groupby("session_id")
+    tag_by_sid = tags.groupby("session_id")["tag"].apply(set).to_dict()
+    msg_ass    = messages[messages["role"] == "assistant"].groupby("session_id")
+
+    rows = []
+    for _, sess in sessions.iterrows():
+        sid = sess["id"]
+
+        # ── CLI  (PO-1: CVP loop intensity, 0-35) ───────────────────────
+        s_tr = tr_by_sid.get_group(sid) if sid in tr_by_sid.groups else pd.DataFrame()
+        cvp_tr = s_tr[s_tr["tool_name"].fillna("").str.contains(_CVP_RE)] if not s_tr.empty else pd.DataFrame()
+        cvp_inv  = len(cvp_tr)
+        cvp_fail = int(cvp_tr["error"].notna().sum()) if not cvp_tr.empty else 0
+
+        s_ass = msg_ass.get_group(sid)["text"].fillna("") if sid in msg_ass.groups else pd.Series(dtype=str)
+        cvp_repeats = int(s_ass.str.contains(_CVP_Q_RE).sum())
+
+        s_tags = tag_by_sid.get(sid, set())
+        if "tool:cvp:failed" in s_tags:
+            cvp_fail = max(cvp_fail, 1)
+
+        raw_cli = max(0, cvp_inv - 1) * 5 + cvp_fail * 4 + max(0, cvp_repeats - 3) * 2
+        cli = min(35, round(35 * (1 - math.exp(-raw_cli / 12)))) if raw_cli > 0 else 0
+
+        # ── IRG  (PO-2: CustomerByTelephone absent, 0-20) ────────────────
+        has_fod = (not s_tr.empty and
+                   s_tr["tool_name"].fillna("").str.contains(_PHONE_RE).any())
+        if has_fod:
+            irg = 0
+        else:
+            ria_calls = sum(1 for t in s_tags if t.startswith("api:ria:"))
+            phone_in_msg = sid in msg_ass.groups and bool(
+                messages[(messages["session_id"] == sid) & (messages["role"] == "user")]
+                ["text"].fillna("").str.contains(_PHONE_TXT).any()
+            )
+            if phone_in_msg and ria_calls > 0:
+                irg = 20
+            elif ria_calls > 0:
+                irg = 8
+            elif phone_in_msg:
+                irg = 12
+            else:
+                irg = 0
+
+        # ── MCS  (PO-3: monitor compound severity, 0-30) ────────────────
+        s_mon = mon_by_sid.get_group(sid) if sid in mon_by_sid.groups else pd.DataFrame()
+        if s_mon.empty:
+            mcs = 0
+        else:
+            base = sum(_MON_W.get(n, 0) for n in s_mon["name"].tolist())
+            n_det = len(s_mon)
+            combo = 1.0 + 0.3 * max(0, n_det - 1)
+            dur   = float(sess.get("duration_seconds") or 0)
+            dur_m = 1.0 if dur < 300 else min(1.2, 1 + (dur - 300) / 1500)
+            mcs   = min(30, round(base * combo * dur_m * (30 / _MON_BASE_MAX)))
+
+        # ── IMD  (PO-4: intent mismatch drag, 0-15) ─────────────────────
+        intent = str(sess.get("category") or "").strip().lower()
+        if intent in _INFORMATIONAL and cvp_inv > 0:
+            imd = 15 if cvp_inv >= 3 else (10 if cvp_inv == 2 else 6)
+        else:
+            imd = 0
+
+        sfs = cli + irg + mcs + imd
+        level_es, level_en, color = _sfs_level(sfs)
+        rows.append({
+            "session_id": sid,
+            "sfs": sfs,
+            "cli_cvp_loop": cli,
+            "irg_identity_gap": irg,
+            "mcs_monitor_compound": mcs,
+            "imd_intent_mismatch": imd,
+            "level_es": level_es,
+            "level_en": level_en,
+            "color": color,
+        })
+
+    return pd.DataFrame(rows).sort_values("sfs", ascending=False).reset_index(drop=True)
+
+
+def render_friction_score_section(sfs_df: pd.DataFrame, sessions_all: pd.DataFrame) -> None:
+    """3-viz SFS section: distribution · stacked by level · scatter vs duration."""
+
+    lang = st.session_state.get("lang", "es")
+
+    st.markdown(_t(
+        "### 📊  Session Friction Score (SFS)  ·  fricción medida, no estimada",
+        "### 📊  Session Friction Score (SFS)  ·  measured friction, not estimated",
+    ))
+    st.caption(_t(
+        "Métrica compuesta 0-100 por sesión. 4 componentes mapeados a las 4 recomendaciones del Product Owner: "
+        "**CLI** (loop CVP · PO-1) + **IRG** (CustomerByTelephone ausente · PO-2) + "
+        "**MCS** (monitores sin recovery · PO-3) + **IMD** (CVP en intents informativos · PO-4). "
+        "A diferencia del gráfico de etapas, captura magnitud — 6 loops CVP puntúan más que 1.",
+        "Composite 0-100 metric per session. 4 components mapped to the 4 Product Owner recommendations: "
+        "**CLI** (CVP loop · PO-1) + **IRG** (CustomerByTelephone absent · PO-2) + "
+        "**MCS** (monitors without recovery · PO-3) + **IMD** (CVP on informational intents · PO-4). "
+        "Unlike the stage chart, it captures magnitude — 6 CVP loops score higher than 1.",
+    ))
+
+    level_col = "level_es" if lang == "es" else "level_en"
+    level_order_es = ["Fluida", "Friccionada", "Bloqueada", "Crítica"]
+    level_order_en = ["Smooth", "Friction", "Blocked", "Critical"]
+    level_order = level_order_es if lang == "es" else level_order_en
+    level_colors = {
+        "Fluida": "#6c8d5a", "Smooth": "#6c8d5a",
+        "Friccionada": "#c9a449", "Friction": "#c9a449",
+        "Bloqueada": "#d97e5a", "Blocked": "#d97e5a",
+        "Crítica": "#c44f3a", "Critical": "#c44f3a",
+    }
+
+    # ── KPI strip ────────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("SFS Promedio" if lang == "es" else "Avg SFS",
+              f"{sfs_df['sfs'].mean():.1f}")
+    k2.metric("Sesiones Críticas" if lang == "es" else "Critical sessions",
+              f"{(sfs_df['sfs'] >= 60).sum()}",
+              f"{(sfs_df['sfs'] >= 60).mean()*100:.0f}%", delta_color="inverse")
+    k3.metric("Sesiones Fluidas" if lang == "es" else "Smooth sessions",
+              f"{(sfs_df['sfs'] <= 14).sum()}",
+              f"{(sfs_df['sfs'] <= 14).mean()*100:.0f}%")
+    k4.metric("Mayor contribuidor" if lang == "es" else "Top contributor",
+              "CLI (CVP)" if sfs_df["cli_cvp_loop"].mean() >= sfs_df[
+                  ["irg_identity_gap","mcs_monitor_compound","imd_intent_mismatch"]
+              ].mean().max() else "MCS (Mon.)")
+    k5.metric("Máx SFS", f"{sfs_df['sfs'].max()}")
+
+    st.markdown("---")
+
+    viz1, viz2 = st.columns([3, 2])
+
+    # ── Viz 1: histograma SFS con bandas de nivel ─────────────────────
+    with viz1:
+        st.markdown(_t("#### Distribución de SFS por nivel",
+                       "#### SFS distribution by level"))
+        hist_data = []
+        for lo, hi, es, en, color in SFS_LEVELS:
+            label = es if lang == "es" else en
+            count = int(((sfs_df["sfs"] >= lo) & (sfs_df["sfs"] <= hi)).sum())
+            hist_data.append({"level": label, "count": count, "color": color,
+                               "range": f"{lo}–{hi}"})
+        hist_df = pd.DataFrame(hist_data)
+
+        fig1 = go.Figure()
+        for _, row in hist_df.iterrows():
+            fig1.add_trace(go.Bar(
+                x=[row["level"]], y=[row["count"]],
+                marker_color=row["color"],
+                text=[row["count"]], textposition="outside",
+                hovertemplate=(
+                    f"<b>{row['level']}</b><br>"
+                    f"SFS {row['range']}<br>"
+                    f"{row['count']} sesiones<extra></extra>"
+                ),
+                name=row["level"],
+                showlegend=False,
+            ))
+        fig1.update_layout(
+            height=320, margin=dict(l=5, r=5, t=10, b=10),
+            plot_bgcolor="#fff",
+            xaxis=dict(categoryorder="array",
+                       categoryarray=[r["level"] for r in hist_data]),
+            yaxis=dict(title=_t("Sesiones", "Sessions")),
+        )
+        st.plotly_chart(fig1, use_container_width=True)
+
+        # Bands legend
+        cols_l = st.columns(4)
+        for i, (lo, hi, es, en, color) in enumerate(SFS_LEVELS):
+            label = es if lang == "es" else en
+            cols_l[i].markdown(
+                f"<div style='background:{color}20;border-left:3px solid {color};"
+                f"padding:4px 8px;border-radius:2px;font-size:0.75rem'>"
+                f"<b style='color:{color}'>{label}</b><br>{lo}–{hi} pts</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ── Viz 2: stacked contribución por componente por nivel ──────────
+    with viz2:
+        st.markdown(_t("#### ¿Qué PO domina cada nivel?",
+                       "#### Which PO drives each level?"))
+        comp_rows = []
+        for lo, hi, es, en, color in SFS_LEVELS:
+            label = es if lang == "es" else en
+            subset = sfs_df[(sfs_df["sfs"] >= lo) & (sfs_df["sfs"] <= hi)]
+            if subset.empty:
+                continue
+            comp_rows.append({
+                "level":  label,
+                "CLI · PO-1": subset["cli_cvp_loop"].mean(),
+                "IRG · PO-2": subset["irg_identity_gap"].mean(),
+                "MCS · PO-3": subset["mcs_monitor_compound"].mean(),
+                "IMD · PO-4": subset["imd_intent_mismatch"].mean(),
+            })
+        comp_df = pd.DataFrame(comp_rows)
+
+        comp_colors = {
+            "CLI · PO-1": "#CC785C",
+            "IRG · PO-2": "#6A8CAA",
+            "MCS · PO-3": "#c44f3a",
+            "IMD · PO-4": "#c9a449",
+        }
+        fig2 = go.Figure()
+        for comp, clr in comp_colors.items():
+            if comp in comp_df.columns:
+                fig2.add_trace(go.Bar(
+                    name=comp, x=comp_df["level"], y=comp_df[comp].round(1),
+                    marker_color=clr,
+                    hovertemplate=f"<b>{comp}</b><br>Promedio: %{{y:.1f}} pts<extra></extra>",
+                ))
+        fig2.update_layout(
+            barmode="stack", height=320,
+            margin=dict(l=5, r=5, t=10, b=10),
+            plot_bgcolor="#fff",
+            legend=dict(orientation="h", y=-0.3, font_size=11),
+            yaxis=dict(title=_t("Pts promedio", "Avg pts")),
+            xaxis=dict(categoryorder="array",
+                       categoryarray=[r["level"] for r in comp_rows]),
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # ── Viz 3: scatter SFS vs duración ───────────────────────────────
+    st.markdown(_t(
+        "#### SFS vs. duración de llamada — ¿dónde falla rápido y dónde se atasca?",
+        "#### SFS vs. call duration — where does it fail fast vs. get stuck?",
+    ))
+    st.caption(_t(
+        "Esquina superior-izquierda = fallo catastrófico rápido (auth quemó antes de empezar). "
+        "Esquina superior-derecha = loop prolongado (el agente intentó muchas veces sin éxito). "
+        "Esquina inferior-derecha = llamada larga pero fluida (trabajo legítimo).",
+        "Top-left = fast catastrophic failure (auth burned before it started). "
+        "Top-right = extended loop (agent tried many times without success). "
+        "Bottom-right = long but smooth call (legitimate work).",
+    ))
+
+    scatter_df = sfs_df.merge(
+        sessions_all[["id", "duration_seconds"]].rename(columns={"id": "session_id"}),
+        on="session_id", how="left",
+    )
+
+    fig3 = go.Figure()
+    for lo, hi, es, en, color in SFS_LEVELS:
+        label = es if lang == "es" else en
+        sub = scatter_df[(scatter_df["sfs"] >= lo) & (scatter_df["sfs"] <= hi)]
+        if sub.empty:
+            continue
+        fig3.add_trace(go.Scatter(
+            x=sub["duration_seconds"].fillna(0),
+            y=sub["sfs"],
+            mode="markers",
+            name=label,
+            marker=dict(color=color, size=9, opacity=0.75,
+                        line=dict(color="#fff", width=1)),
+            hovertemplate=(
+                "<b>SFS: %{y}</b><br>"
+                "Duración: %{x}s<br>"
+                f"Nivel: {label}<extra></extra>"
+            ),
+        ))
+    fig3.add_hline(y=35, line_dash="dot", line_color="#d97e5a", opacity=0.5,
+                   annotation_text=_t("Umbral Bloqueada", "Blocked threshold"),
+                   annotation_position="right")
+    fig3.add_hline(y=60, line_dash="dot", line_color="#c44f3a", opacity=0.5,
+                   annotation_text=_t("Umbral Crítica", "Critical threshold"),
+                   annotation_position="right")
+    fig3.update_layout(
+        height=360, margin=dict(l=5, r=80, t=10, b=10),
+        plot_bgcolor="#fff",
+        xaxis=dict(title=_t("Duración de llamada (segundos)", "Call duration (seconds)")),
+        yaxis=dict(title="SFS", range=[0, 105]),
+        legend=dict(orientation="h", y=-0.25),
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+
+    with st.expander(_t("📋  Top 10 sesiones con mayor fricción",
+                        "📋  Top 10 highest-friction sessions")):
+        top10 = sfs_df.head(10)[[
+            "session_id", "sfs", "level_es" if lang == "es" else "level_en",
+            "cli_cvp_loop", "irg_identity_gap", "mcs_monitor_compound", "imd_intent_mismatch",
+        ]].copy()
+        top10.columns = [
+            "Session ID", "SFS",
+            _t("Nivel", "Level"),
+            "CLI · PO-1", "IRG · PO-2", "MCS · PO-3", "IMD · PO-4",
+        ]
+        st.dataframe(top10, use_container_width=True, hide_index=True)
+
+
 SEV_ORDER = ["Critical", "High", "Medium", "Low", "(unclassified)"]
 SEV_COLOR = {
     "Critical":        "#c44f3a",
@@ -466,11 +812,14 @@ gaps and to sample sessions for human review.
     monitors     = load_monitors()
     tags         = load_tags()
     traces       = load_traces()
+    messages_all = load_all_messages()
     issues       = load_issues_raw()
 
     classified = sessions[sessions["category"] != "(unclassified)"].copy()
     n_listed   = len(sessions_all)
     n_sample   = len(sessions)
+
+    sfs_df = compute_friction_scores(sessions, monitors, traces, tags, messages_all)
 
     # Sample-scope banner — explains why 100% is 111, not 8,113.
     st.info(_t(
@@ -490,6 +839,9 @@ gaps and to sample sessions for human review.
 
     # ---------- Row 2 · Customer journey friction ------------------------
     render_customer_journey_friction(sessions, tags, monitors)
+
+    # ---------- Row 3 · Session Friction Score (SFS) ---------------------
+    render_friction_score_section(sfs_df, sessions_all)
 
     # Pre-compute values used later in the page
     n_crit = int((classified["severity"] == "Critical").sum())
