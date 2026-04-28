@@ -4867,6 +4867,16 @@ def page_strategic():
 # ---------------------------------------------------------------------------
 
 def page_po_recs():
+    lang = st.session_state.get("lang", "es")
+
+    DIV_BAD  = "background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8"
+    DIV_GOOD = "background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8"
+
+    def _dlg(es: str, en: str, good: bool = False) -> None:
+        style = DIV_GOOD if good else DIV_BAD
+        content = en if lang == "en" else es
+        st.markdown(f"<div style='{style}'>{content}</div>", unsafe_allow_html=True)
+
     st.title(_t("📌  Recomendaciones para el Product Owner",
                 "📌  Product Owner Recommendations"))
     st.caption(_t(
@@ -4906,36 +4916,53 @@ def page_po_recs():
             st.markdown("#### ❌ AS-IS")
             st.markdown(_t("Caller falla CVP. El agente vuelve a preguntar. Sin salida.",
                            "Caller fails CVP. Agent asks again. No exit."))
-            st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-🤖 <b>Aria:</b> ¿Cuál es su nombre completo tal como aparece en la cuenta?<br>
-👤 <b>Caller:</b> María García López<br>
-🤖 <b>Aria:</b> No pude verificar su identidad. ¿Cuál es el país al que envió dinero más recientemente?<br>
-👤 <b>Caller:</b> México<br>
-🤖 <b>Aria:</b> No pude verificar su identidad. Intentemos de nuevo. ¿Cuál es su nombre completo?<br>
-👤 <b>Caller:</b> ¡Ya lo dije! María García López<br>
-🤖 <b>Aria:</b> No pude verificar su identidad. ¿Cuál es su nombre completo?<br>
-👤 <b>Caller:</b> <i>[cuelga]</i>
-</div>""", unsafe_allow_html=True)
+            _dlg(
+                "🤖 <b>Aria:</b> ¿Cuál es su nombre completo tal como aparece en la cuenta?<br>"
+                "👤 <b>Caller:</b> María García López<br>"
+                "🤖 <b>Aria:</b> No pude verificar su identidad. ¿Cuál es el país al que envió dinero más recientemente?<br>"
+                "👤 <b>Caller:</b> México<br>"
+                "🤖 <b>Aria:</b> No pude verificar su identidad. Intentemos de nuevo. ¿Cuál es su nombre completo?<br>"
+                "👤 <b>Caller:</b> ¡Ya lo dije! María García López<br>"
+                "🤖 <b>Aria:</b> No pude verificar su identidad. ¿Cuál es su nombre completo?<br>"
+                "👤 <b>Caller:</b> <i>[cuelga]</i>",
+                "🤖 <b>Aria:</b> What is your full name as it appears on the account?<br>"
+                "👤 <b>Caller:</b> Maria Garcia Lopez<br>"
+                "🤖 <b>Aria:</b> I could not verify your identity. What is the country where you most recently sent money?<br>"
+                "👤 <b>Caller:</b> Mexico<br>"
+                "🤖 <b>Aria:</b> I could not verify your identity. Let's try again. What is your full name?<br>"
+                "👤 <b>Caller:</b> I already said it! Maria Garcia Lopez<br>"
+                "🤖 <b>Aria:</b> I could not verify your identity. What is your full name?<br>"
+                "👤 <b>Caller:</b> <i>[hangs up]</i>",
+            )
         with c2:
             st.markdown("#### ✅ SHOULD-BE")
             st.markdown(_t("Después de 2 intentos: salida controlada con ticket Zendesk.",
                            "After 2 attempts: controlled exit with Zendesk ticket."))
-            st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-🤖 <b>Aria:</b> ¿Cuál es su nombre completo tal como aparece en la cuenta?<br>
-👤 <b>Caller:</b> María García López<br>
-🤖 <b>Aria:</b> No pude verificar su identidad. Intentemos una vez más. ¿El país al que envió dinero más recientemente?<br>
-👤 <b>Caller:</b> México<br>
-🟡 <i>[2 intentos fallidos → hard-exit activa]</i><br>
-🤖 <b>Aria:</b> No pude verificar su identidad en este momento. Voy a crearle un ticket para que un especialista le ayude por este canal. ¿Le parece bien?<br>
-👤 <b>Caller:</b> Sí, gracias.<br>
-✅ <i>CreateZendeskTicket → referencia #12345 → caller confirmado</i>
-</div>""", unsafe_allow_html=True)
+            _dlg(
+                "🤖 <b>Aria:</b> ¿Cuál es su nombre completo tal como aparece en la cuenta?<br>"
+                "👤 <b>Caller:</b> María García López<br>"
+                "🤖 <b>Aria:</b> No pude verificar su identidad. Intentemos una vez más. ¿El país al que envió dinero más recientemente?<br>"
+                "👤 <b>Caller:</b> México<br>"
+                "🟡 <i>[2 intentos fallidos → hard-exit activa]</i><br>"
+                "🤖 <b>Aria:</b> No pude verificar su identidad en este momento. Voy a crearle un ticket para que un especialista le ayude por este canal. ¿Le parece bien?<br>"
+                "👤 <b>Caller:</b> Sí, gracias.<br>"
+                "✅ <i>CreateZendeskTicket → referencia #12345 → caller confirmado</i>",
+                "🤖 <b>Aria:</b> What is your full name as it appears on the account?<br>"
+                "👤 <b>Caller:</b> Maria Garcia Lopez<br>"
+                "🤖 <b>Aria:</b> I could not verify your identity. One more try — what is the country where you most recently sent money?<br>"
+                "👤 <b>Caller:</b> Mexico<br>"
+                "🟡 <i>[2 failed attempts → hard-exit activates]</i><br>"
+                "🤖 <b>Aria:</b> I wasn't able to verify your identity right now. Let me create a ticket so a specialist can help you through this channel. Does that work for you?<br>"
+                "👤 <b>Caller:</b> Yes, thank you.<br>"
+                "✅ <i>CreateZendeskTicket → reference #12345 → caller confirmed</i>",
+                good=True,
+            )
         st.markdown("---")
         col_l, col_r = st.columns([2,1])
         with col_r:
             st.metric(_t("Sesiones críticas", "Critical sessions"), "9")
             st.metric(_t("Tool nuevo requerido", "New tool required"), _t("No", "No"))
-            st.caption("`CreateZendeskTicket` ya existe.")
+            st.caption(_t("`CreateZendeskTicket` ya existe.", "`CreateZendeskTicket` already exists."))
         with col_l:
             st.success(_t(
                 "**Impacto:** Elimina el loop CVP de raíz. El caller sale con una "
@@ -4964,28 +4991,43 @@ def page_po_recs():
             st.markdown("#### ❌ AS-IS")
             st.markdown(_t("El agente no sabe quién llama. Pregunta desde cero.",
                            "The agent does not know who is calling. Asks from scratch."))
-            st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-📞 <i>[Caller llama desde su móvil +1-555-0192]</i><br>
-🤖 <b>Aria:</b> Hola, ¿me puede dar su número de orden?<br>
-👤 <b>Caller:</b> Sí, es RIA-dos-tres-cuatro-cinco-seis-A-B<br>
-🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede deletrear?<br>
-👤 <b>Caller:</b> R… I… A… dos… tres…<br>
-🔴 <i>[Agent Looping dispara — 14 sesiones con este patrón]</i><br>
-👤 <b>Caller:</b> <i>[cuelga]</i>
-</div>""", unsafe_allow_html=True)
+            _dlg(
+                "📞 <i>[Caller llama desde su móvil +1-555-0192]</i><br>"
+                "🤖 <b>Aria:</b> Hola, ¿me puede dar su número de orden?<br>"
+                "👤 <b>Caller:</b> Sí, es RIA-dos-tres-cuatro-cinco-seis-A-B<br>"
+                "🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede deletrear?<br>"
+                "👤 <b>Caller:</b> R… I… A… dos… tres…<br>"
+                "🔴 <i>[Agent Looping dispara — 14 sesiones con este patrón]</i><br>"
+                "👤 <b>Caller:</b> <i>[cuelga]</i>",
+                "📞 <i>[Caller rings from their mobile +1-555-0192]</i><br>"
+                "🤖 <b>Aria:</b> Hi, can I have your order number?<br>"
+                "👤 <b>Caller:</b> Sure, it's RIA-two-three-four-five-six-A-B<br>"
+                "🤖 <b>Aria:</b> I couldn't find that number. Could you spell it out?<br>"
+                "👤 <b>Caller:</b> R… I… A… two… three…<br>"
+                "🔴 <i>[Agent Looping fires — 14 sessions with this pattern]</i><br>"
+                "👤 <b>Caller:</b> <i>[hangs up]</i>",
+            )
         with c2:
             st.markdown("#### ✅ SHOULD-BE")
             st.markdown(_t("El agente ya sabe quién llama antes de decir 'hola'.",
                            "The agent already knows who is calling before saying 'hello'."))
-            st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-📞 <i>[Caller llama desde su móvil +1-555-0192]</i><br>
-🟡 <i>[CustomerByTelephone(ani=+15550192) → María García encontrada]</i><br>
-🤖 <b>Aria:</b> Hola María, ¿en qué le puedo ayudar hoy?<br>
-👤 <b>Caller:</b> Quiero saber el estado de mi transferencia.<br>
-🤖 <b>Aria:</b> Veo que tiene una transferencia reciente a México por $200. ¿Es sobre esa?<br>
-👤 <b>Caller:</b> Sí, exacto.<br>
-✅ <i>Sin spelleo. Sin número de orden. Resolución directa.</i>
-</div>""", unsafe_allow_html=True)
+            _dlg(
+                "📞 <i>[Caller llama desde su móvil +1-555-0192]</i><br>"
+                "🟡 <i>[CustomerByTelephone(ani=+15550192) → María García encontrada]</i><br>"
+                "🤖 <b>Aria:</b> Hola María, ¿en qué le puedo ayudar hoy?<br>"
+                "👤 <b>Caller:</b> Quiero saber el estado de mi transferencia.<br>"
+                "🤖 <b>Aria:</b> Veo que tiene una transferencia reciente a México por $200. ¿Es sobre esa?<br>"
+                "👤 <b>Caller:</b> Sí, exacto.<br>"
+                "✅ <i>Sin spelleo. Sin número de orden. Resolución directa.</i>",
+                "📞 <i>[Caller rings from their mobile +1-555-0192]</i><br>"
+                "🟡 <i>[CustomerByTelephone(ani=+15550192) → Maria Garcia found]</i><br>"
+                "🤖 <b>Aria:</b> Hi Maria, how can I help you today?<br>"
+                "👤 <b>Caller:</b> I want to check the status of my transfer.<br>"
+                "🤖 <b>Aria:</b> I can see you have a recent transfer to Mexico for $200. Is that the one?<br>"
+                "👤 <b>Caller:</b> Yes, exactly.<br>"
+                "✅ <i>No spelling. No order number. Direct resolution.</i>",
+                good=True,
+            )
         st.markdown("---")
         col_l, col_r = st.columns([2,1])
         with col_r:
@@ -5045,27 +5087,43 @@ def page_po_recs():
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("#### ❌ AS-IS")
-                st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-🤖 <b>Aria:</b> ¿Me puede dar su número de orden?<br>
-👤 <b>Caller:</b> Sí, es ES-uno-dos-tres-cuatro-A<br>
-🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede repetir?<br>
-👤 <b>Caller:</b> ES… uno… dos… tres… cuatro… A<br>
-🔴 <i>[Monitor dispara — sin acción]</i><br>
-🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede deletrear?<br>
-👤 <b>Caller:</b> ¡Ya lo dije tres veces! <i>[cuelga]</i>
-</div>""", unsafe_allow_html=True)
+                _dlg(
+                    "🤖 <b>Aria:</b> ¿Me puede dar su número de orden?<br>"
+                    "👤 <b>Caller:</b> Sí, es ES-uno-dos-tres-cuatro-A<br>"
+                    "🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede repetir?<br>"
+                    "👤 <b>Caller:</b> ES… uno… dos… tres… cuatro… A<br>"
+                    "🔴 <i>[Monitor dispara — sin acción]</i><br>"
+                    "🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede deletrear?<br>"
+                    "👤 <b>Caller:</b> ¡Ya lo dije tres veces! <i>[cuelga]</i>",
+                    "🤖 <b>Aria:</b> Can I have your order number?<br>"
+                    "👤 <b>Caller:</b> Yes, it's ES-one-two-three-four-A<br>"
+                    "🤖 <b>Aria:</b> I couldn't find that number. Could you repeat it?<br>"
+                    "👤 <b>Caller:</b> ES… one… two… three… four… A<br>"
+                    "🔴 <i>[Monitor fires — no action]</i><br>"
+                    "🤖 <b>Aria:</b> I couldn't find that number. Could you spell it out?<br>"
+                    "👤 <b>Caller:</b> I've said it three times already! <i>[hangs up]</i>",
+                )
             with c2:
                 st.markdown("#### ✅ SHOULD-BE")
-                st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-🤖 <b>Aria:</b> ¿Me puede dar su número de orden?<br>
-👤 <b>Caller:</b> Sí, es ES-uno-dos-tres-cuatro-A<br>
-🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede repetir?<br>
-👤 <b>Caller:</b> ES… uno… dos… tres… cuatro… A<br>
-🟡 <i>[Monitor dispara → recovery activa]</i><br>
-🤖 <b>Aria:</b> Permítame intentarlo diferente — voy a buscarle por su número de teléfono. ¿Le parece bien?<br>
-👤 <b>Caller:</b> Sí, por favor.<br>
-✅ <i>CustomerByTelephone → cliente identificado → resolución</i>
-</div>""", unsafe_allow_html=True)
+                _dlg(
+                    "🤖 <b>Aria:</b> ¿Me puede dar su número de orden?<br>"
+                    "👤 <b>Caller:</b> Sí, es ES-uno-dos-tres-cuatro-A<br>"
+                    "🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede repetir?<br>"
+                    "👤 <b>Caller:</b> ES… uno… dos… tres… cuatro… A<br>"
+                    "🟡 <i>[Monitor dispara → recovery activa]</i><br>"
+                    "🤖 <b>Aria:</b> Permítame intentarlo diferente — voy a buscarle por su número de teléfono. ¿Le parece bien?<br>"
+                    "👤 <b>Caller:</b> Sí, por favor.<br>"
+                    "✅ <i>CustomerByTelephone → cliente identificado → resolución</i>",
+                    "🤖 <b>Aria:</b> Can I have your order number?<br>"
+                    "👤 <b>Caller:</b> Yes, it's ES-one-two-three-four-A<br>"
+                    "🤖 <b>Aria:</b> I couldn't find that number. Could you repeat it?<br>"
+                    "👤 <b>Caller:</b> ES… one… two… three… four… A<br>"
+                    "🟡 <i>[Monitor fires → recovery activates]</i><br>"
+                    "🤖 <b>Aria:</b> Let me try a different approach — I'll look you up by your phone number instead. Does that work?<br>"
+                    "👤 <b>Caller:</b> Yes, please.<br>"
+                    "✅ <i>CustomerByTelephone → caller identified → resolved</i>",
+                    good=True,
+                )
             st.caption(_t("Tool de recovery: `CustomerByTelephone` — ya existe. Sin tool nuevo.",
                           "Recovery tool: `CustomerByTelephone` — already exists. No new tool."))
 
@@ -5079,24 +5137,37 @@ def page_po_recs():
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("#### ❌ AS-IS")
-                st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>
-<i>[Transfer falla silenciosamente]</i><br>
-🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>
-🔴 <i>[Monitor dispara — sin acción]</i><br>
-🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>
-👤 <b>Caller:</b> ¿Pero qué está pasando? <i>[cuelga]</i>
-</div>""", unsafe_allow_html=True)
+                _dlg(
+                    "🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>"
+                    "<i>[Transfer falla silenciosamente]</i><br>"
+                    "🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>"
+                    "🔴 <i>[Monitor dispara — sin acción]</i><br>"
+                    "🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>"
+                    "👤 <b>Caller:</b> ¿Pero qué está pasando? <i>[cuelga]</i>",
+                    "🤖 <b>Aria:</b> I'm going to transfer you to an agent right now.<br>"
+                    "<i>[Transfer fails silently]</i><br>"
+                    "🤖 <b>Aria:</b> I'm going to transfer you to an agent right now.<br>"
+                    "🔴 <i>[Monitor fires — no action]</i><br>"
+                    "🤖 <b>Aria:</b> I'm going to transfer you to an agent right now.<br>"
+                    "👤 <b>Caller:</b> What on earth is going on? <i>[hangs up]</i>",
+                )
             with c2:
                 st.markdown("#### ✅ SHOULD-BE")
-                st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>
-<i>[Transfer falla]</i><br>
-🟡 <i>[Monitor dispara → recovery activa]</i><br>
-🤖 <b>Aria:</b> Estoy teniendo dificultades para conectarle. Voy a crearle un ticket urgente para que un agente le contacte en menos de 2 horas.<br>
-👤 <b>Caller:</b> Sí, está bien.<br>
-✅ <i>CreateZendeskTicket → referencia #XXXXX → caller confirmado</i>
-</div>""", unsafe_allow_html=True)
+                _dlg(
+                    "🤖 <b>Aria:</b> Le voy a transferir con un agente ahora mismo.<br>"
+                    "<i>[Transfer falla]</i><br>"
+                    "🟡 <i>[Monitor dispara → recovery activa]</i><br>"
+                    "🤖 <b>Aria:</b> Estoy teniendo dificultades para conectarle. Voy a crearle un ticket urgente para que un agente le contacte en menos de 2 horas.<br>"
+                    "👤 <b>Caller:</b> Sí, está bien.<br>"
+                    "✅ <i>CreateZendeskTicket → referencia #XXXXX → caller confirmado</i>",
+                    "🤖 <b>Aria:</b> I'm going to transfer you to an agent right now.<br>"
+                    "<i>[Transfer fails]</i><br>"
+                    "🟡 <i>[Monitor fires → recovery activates]</i><br>"
+                    "🤖 <b>Aria:</b> I'm having trouble connecting you right now. Let me create an urgent ticket so an agent contacts you within 2 hours.<br>"
+                    "👤 <b>Caller:</b> Yes, that works.<br>"
+                    "✅ <i>CreateZendeskTicket → reference #XXXXX → caller confirmed</i>",
+                    good=True,
+                )
             st.caption(_t("Tool de recovery: `CreateZendeskTicket` — ya existe. Sin tool nuevo.",
                           "Recovery tool: `CreateZendeskTicket` — already exists. No new tool."))
 
@@ -5110,21 +5181,31 @@ def page_po_recs():
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("#### ❌ AS-IS")
-                st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-👤 <b>Caller:</b> ¡Esto es ridículo! ¡Llevo 10 minutos y no resuelven nada!<br>
-🔴 <i>[Monitor dispara — sin acción]</i><br>
-🤖 <b>Aria:</b> Entiendo. ¿Me puede dar su número de orden?<br>
-👤 <b>Caller:</b> ¡YA LO DI DOS VECES! <i>[cuelga]</i>
-</div>""", unsafe_allow_html=True)
+                _dlg(
+                    "👤 <b>Caller:</b> ¡Esto es ridículo! ¡Llevo 10 minutos y no resuelven nada!<br>"
+                    "🔴 <i>[Monitor dispara — sin acción]</i><br>"
+                    "🤖 <b>Aria:</b> Entiendo. ¿Me puede dar su número de orden?<br>"
+                    "👤 <b>Caller:</b> ¡YA LO DI DOS VECES! <i>[cuelga]</i>",
+                    "👤 <b>Caller:</b> This is ridiculous! I've been on for 10 minutes and nothing is resolved!<br>"
+                    "🔴 <i>[Monitor fires — no action]</i><br>"
+                    "🤖 <b>Aria:</b> I understand. Can I have your order number?<br>"
+                    "👤 <b>Caller:</b> I GAVE IT TWICE ALREADY! <i>[hangs up]</i>",
+                )
             with c2:
                 st.markdown("#### ✅ SHOULD-BE")
-                st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-👤 <b>Caller:</b> ¡Esto es ridículo! ¡Llevo 10 minutos y no resuelven nada!<br>
-🟡 <i>[Monitor dispara → empathy mode activa]</i><br>
-🤖 <b>Aria:</b> Tiene toda la razón, lo siento mucho. No debería haber tomado tanto tiempo. Voy a conectarle directamente con un especialista que ya tendrá el contexto de su caso.<br>
-👤 <b>Caller:</b> Gracias, eso es lo que necesito.<br>
-✅ <i>transfer(priority=high, context=full_session)</i>
-</div>""", unsafe_allow_html=True)
+                _dlg(
+                    "👤 <b>Caller:</b> ¡Esto es ridículo! ¡Llevo 10 minutos y no resuelven nada!<br>"
+                    "🟡 <i>[Monitor dispara → empathy mode activa]</i><br>"
+                    "🤖 <b>Aria:</b> Tiene toda la razón, lo siento mucho. No debería haber tomado tanto tiempo. Voy a conectarle directamente con un especialista que ya tendrá el contexto de su caso.<br>"
+                    "👤 <b>Caller:</b> Gracias, eso es lo que necesito.<br>"
+                    "✅ <i>transfer(priority=high, context=full_session)</i>",
+                    "👤 <b>Caller:</b> This is ridiculous! I've been on for 10 minutes and nothing is resolved!<br>"
+                    "🟡 <i>[Monitor fires → empathy mode activates]</i><br>"
+                    "🤖 <b>Aria:</b> You're absolutely right, I'm so sorry. This should not have taken this long. I'm connecting you directly with a specialist who will already have the full context of your case.<br>"
+                    "👤 <b>Caller:</b> Thank you, that's what I need.<br>"
+                    "✅ <i>transfer(priority=high, context=full_session)</i>",
+                    good=True,
+                )
             st.caption(_t(
                 "No se piden más datos. El monitor activa transfer con contexto pre-cargado — el caller no repite nada.",
                 "No more data requested. Monitor activates transfer with pre-loaded context — caller repeats nothing.",
@@ -5167,27 +5248,39 @@ def page_po_recs():
                 "Caller hace una pregunta informacional → Aria lo mete al auth flow completo.",
                 "Caller asks an informational question → Aria sends them through the full auth flow.",
             ))
-            st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-👤 <b>Caller:</b> Hola, ¿cuánto cuesta enviar $200 a México?<br>
-🤖 <b>Aria:</b> Puedo ayudarle. Primero necesito verificar su identidad. ¿Me puede dar su número de orden?<br>
-👤 <b>Caller:</b> ¿Para saber el precio? No tengo ningún pedido…<br>
-🤖 <b>Aria:</b> Necesito autenticarle para continuar. ¿Cuál es su nombre completo?<br>
-👤 <b>Caller:</b> ¿En serio? Solo quería saber el fee…<br>
-🔴 <i>[CVP para una pregunta de fees — auth innecesaria, 3 speedbumps para nada]</i>
-</div>""", unsafe_allow_html=True)
+            _dlg(
+                "👤 <b>Caller:</b> Hola, ¿cuánto cuesta enviar $200 a México?<br>"
+                "🤖 <b>Aria:</b> Puedo ayudarle. Primero necesito verificar su identidad. ¿Me puede dar su número de orden?<br>"
+                "👤 <b>Caller:</b> ¿Para saber el precio? No tengo ningún pedido…<br>"
+                "🤖 <b>Aria:</b> Necesito autenticarle para continuar. ¿Cuál es su nombre completo?<br>"
+                "👤 <b>Caller:</b> ¿En serio? Solo quería saber el fee…<br>"
+                "🔴 <i>[CVP para una pregunta de fees — auth innecesaria, 3 speedbumps para nada]</i>",
+                "👤 <b>Caller:</b> Hi, how much does it cost to send $200 to Mexico?<br>"
+                "🤖 <b>Aria:</b> I can help you with that. First I need to verify your identity. Can I have your order number?<br>"
+                "👤 <b>Caller:</b> To check the price? I don't have any order…<br>"
+                "🤖 <b>Aria:</b> I need to authenticate you to continue. What is your full name?<br>"
+                "👤 <b>Caller:</b> Seriously? I just wanted to know the fee…<br>"
+                "🔴 <i>[CVP for a fee question — unnecessary auth, 3 speedbumps for nothing]</i>",
+            )
         with c2:
             st.markdown("#### ✅ SHOULD-BE")
             st.markdown(_t(
                 "Aria clasifica el intent antes de decidir si necesita auth.",
                 "Aria classifies the intent before deciding if auth is needed.",
             ))
-            st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
-👤 <b>Caller:</b> Hola, ¿cuánto cuesta enviar $200 a México?<br>
-🟡 <i>[Intent → "fee inquiry" → informacional → sin auth]</i><br>
-🤖 <b>Aria:</b> ¡Claro! Enviar $200 a México tiene un fee de $4.99. El tipo de cambio hoy es 17.20 MXN por dólar. ¿Le gustaría iniciar una transferencia?<br>
-👤 <b>Caller:</b> Perfecto, gracias.<br>
-✅ <i>Pregunta resuelta en 2 turnos. Sin auth. Sin número de orden.</i>
-</div>""", unsafe_allow_html=True)
+            _dlg(
+                "👤 <b>Caller:</b> Hola, ¿cuánto cuesta enviar $200 a México?<br>"
+                "🟡 <i>[Intent → 'fee inquiry' → informacional → sin auth]</i><br>"
+                "🤖 <b>Aria:</b> ¡Claro! Enviar $200 a México tiene un fee de $4.99. El tipo de cambio hoy es 17.20 MXN por dólar. ¿Le gustaría iniciar una transferencia?<br>"
+                "👤 <b>Caller:</b> Perfecto, gracias.<br>"
+                "✅ <i>Pregunta resuelta en 2 turnos. Sin auth. Sin número de orden.</i>",
+                "👤 <b>Caller:</b> Hi, how much does it cost to send $200 to Mexico?<br>"
+                "🟡 <i>[Intent → 'fee inquiry' → informational → no auth]</i><br>"
+                "🤖 <b>Aria:</b> Of course! Sending $200 to Mexico has a fee of $4.99. Today's exchange rate is 17.20 MXN per dollar. Would you like to start a transfer?<br>"
+                "👤 <b>Caller:</b> Perfect, thank you.<br>"
+                "✅ <i>Question resolved in 2 turns. No auth. No order number.</i>",
+                good=True,
+            )
 
         st.markdown("---")
         col_l, col_r = st.columns([2,1])
