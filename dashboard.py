@@ -1800,15 +1800,11 @@ def render_customer_journey_friction(sessions: pd.DataFrame,
         "Customer journey simulado de 5 etapas para una llamada de voz Ria. "
         "Línea = % de fricción en cada etapa (cuántas sesiones tuvieron problema ahí). "
         "Barras = número de sesiones que llegan a esa etapa (funnel). "
-        "Hover para ver la narrativa por etapa. "
-        "(La captura de CSAT se trackea aparte en Gap #6 — es un gap de "
-        "observabilidad, no fricción del cliente, por eso no aparece como etapa.)",
+        "Hover para ver la narrativa por etapa.",
         "Simulated 5-stage customer journey for a Ria voice call. "
         "Line = % friction at each stage (how many sessions had a problem there). "
         "Bars = session count reaching that stage (funnel). "
-        "Hover for narrative per stage. "
-        "(CSAT capture is tracked separately in Gap #6 — it's an observability "
-        "gap, not customer-facing friction, so it's not a stage in this chart.)",
+        "Hover for narrative per stage.",
     ))
 
     fig = go.Figure()
