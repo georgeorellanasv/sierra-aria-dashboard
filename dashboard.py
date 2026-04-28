@@ -4373,39 +4373,55 @@ def page_po_recs():
             "El SOP diseña el loop CVP — falta un hard-exit counter",
             "The SOP by design creates the CVP loop — it needs a hard-exit counter",
         ))
-        col_l, col_r = st.columns([2, 1])
-        with col_l:
-            st.markdown(_t(
-                "**Qué dice el SOP (§5.3):**",
-                "**What the SOP says (§5.3):**",
-            ))
-            st.info(_t(
-                '"Si la autenticación falla: Allow retry. Do not transfer."  \n'
-                "No hay límite de intentos. No hay contador. No hay condición de salida. "
-                "El agente sigue la instrucción al pie de la letra — y por eso entra en loop.",
-                '"If authentication fails: Allow retry. Do not transfer."  \n'
-                "No attempt limit. No counter. No exit condition. The agent follows the "
-                "instruction exactly — and that is why it loops.",
-            ))
-            st.markdown(_t(
-                "**Recomendación:** Agregar al SOP §5.3 una condición de salida:",
-                "**Recommendation:** Add to SOP §5.3 an explicit exit condition:",
-            ))
-            st.code(
-                "Después de 2 intentos fallidos de AttemptCvpAuthentication\n"
-                "  → CreateZendeskTicket(reason='cvp_authentication_failed')\n"
-                "  → Informar al caller: seguimiento por agente humano\n"
-                "  → No transferir por SIP\n"
-                "  (fallback: Manual CVP via CXi — ya definido en Design Principles)",
-                language="text",
-            )
+        st.info(_t(
+            '**SOP §5.3:** "Si la autenticación falla: Allow retry. Do not transfer." — '
+            'Sin límite de intentos. Sin contador. Sin condición de salida. '
+            'El agente sigue la instrucción al pie de la letra — y por eso entra en loop.',
+            '**SOP §5.3:** "If authentication fails: Allow retry. Do not transfer." — '
+            'No attempt limit. No counter. No exit condition. '
+            'The agent follows the instruction exactly — and that is why it loops.',
+        ))
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("#### ❌ AS-IS")
+            st.markdown(_t("Caller falla CVP. El agente vuelve a preguntar. Sin salida.",
+                           "Caller fails CVP. Agent asks again. No exit."))
+            st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+🤖 <b>Aria:</b> ¿Cuál es su nombre completo tal como aparece en la cuenta?<br>
+👤 <b>Caller:</b> María García López<br>
+🤖 <b>Aria:</b> No pude verificar su identidad. ¿Cuál es el país al que envió dinero más recientemente?<br>
+👤 <b>Caller:</b> México<br>
+🤖 <b>Aria:</b> No pude verificar su identidad. Intentemos de nuevo. ¿Cuál es su nombre completo?<br>
+👤 <b>Caller:</b> ¡Ya lo dije! María García López<br>
+🤖 <b>Aria:</b> No pude verificar su identidad. ¿Cuál es su nombre completo?<br>
+👤 <b>Caller:</b> <i>[cuelga]</i>
+</div>""", unsafe_allow_html=True)
+        with c2:
+            st.markdown("#### ✅ SHOULD-BE")
+            st.markdown(_t("Después de 2 intentos: salida controlada con ticket Zendesk.",
+                           "After 2 attempts: controlled exit with Zendesk ticket."))
+            st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+🤖 <b>Aria:</b> ¿Cuál es su nombre completo tal como aparece en la cuenta?<br>
+👤 <b>Caller:</b> María García López<br>
+🤖 <b>Aria:</b> No pude verificar su identidad. Intentemos una vez más. ¿El país al que envió dinero más recientemente?<br>
+👤 <b>Caller:</b> México<br>
+🟡 <i>[2 intentos fallidos → hard-exit activa]</i><br>
+🤖 <b>Aria:</b> No pude verificar su identidad en este momento. Voy a crearle un ticket para que un especialista le ayude por este canal. ¿Le parece bien?<br>
+👤 <b>Caller:</b> Sí, gracias.<br>
+✅ <i>CreateZendeskTicket → referencia #12345 → caller confirmado</i>
+</div>""", unsafe_allow_html=True)
+        st.markdown("---")
+        col_l, col_r = st.columns([2,1])
         with col_r:
-            st.metric(_t("Issues afectados", "Issues affected"), "#2")
             st.metric(_t("Sesiones críticas", "Critical sessions"), "9")
             st.metric(_t("Tool nuevo requerido", "New tool required"), _t("No", "No"))
-            st.caption(_t(
-                "`CreateZendeskTicket` ya existe en el agente.",
-                "`CreateZendeskTicket` already exists in the agent.",
+            st.caption("`CreateZendeskTicket` ya existe.")
+        with col_l:
+            st.success(_t(
+                "**Impacto:** Elimina el loop CVP de raíz. El caller sale con una "
+                "referencia y expectativa clara — no con frustración y abandono.",
+                "**Impact:** Eliminates the CVP loop at root. The caller exits with a "
+                "reference number and clear expectation — not with frustration and abandonment.",
             ))
 
     # ── PO-2 ──────────────────────────────────────────────────────────────
@@ -4415,41 +4431,57 @@ def page_po_recs():
             "CustomerByTelephone está en los principios de diseño, no en el agente",
             "CustomerByTelephone is in the design principles but absent from the agent",
         ))
-        col_l, col_r = st.columns([2, 1])
-        with col_l:
-            st.markdown(_t(
-                "**Qué dicen los Conversational Design Principles:**",
-                "**What the Conversational Design Principles say:**",
-            ))
-            st.info(_t(
-                '"At the front of door, we will use the Customer by Telephone API to identify '
-                "the caller and retrieve relevant transaction information. This reduces the need "
-                'to ask callers to identify their type and enables proactive support."',
-                '"At the front of door, we will use the Customer by Telephone API to identify '
-                "the caller and retrieve relevant transaction information. This reduces the need "
-                'to ask callers to identify their type and enables proactive support."',
-            ))
-            st.markdown(_t(
-                "**Evidencia:** En 110 sesiones scrapeadas con transcripts y traces completos, "
-                "**no hay una sola llamada a `CustomerByTelephone`** — ni al inicio ni como fallback.",
-                "**Evidence:** Across 110 scraped sessions with complete transcripts and traces, "
-                "**there is not a single call to `CustomerByTelephone`** — neither at call start nor as fallback.",
-            ))
-            st.warning(_t(
-                "**Pregunta directa para el PO:** ¿Está `CustomerByTelephone` implementado "
-                "en producción hoy? Si no, los Issues #1, #3 y #5 (37 sesiones) son consecuencia "
-                "de un prerequisito faltante, no de un error del agente.",
-                "**Direct question for the PO:** Is `CustomerByTelephone` implemented in production "
-                "today? If not, Issues #1, #3 and #5 (37 sessions) are the consequence of a missing "
-                "prerequisite, not incorrect agent behaviour.",
-            ))
+        st.info(_t(
+            '**Conversational Design Principles:** "At the front of door, we will use the '
+            'Customer by Telephone API to identify the caller before asking anything." — '
+            'En 110 sesiones scrapeadas: 0 invocaciones. Cero.',
+            '**Conversational Design Principles:** "At the front of door, we will use the '
+            'Customer by Telephone API to identify the caller before asking anything." — '
+            'Across 110 scraped sessions: 0 invocations. Zero.',
+        ))
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("#### ❌ AS-IS")
+            st.markdown(_t("El agente no sabe quién llama. Pregunta desde cero.",
+                           "The agent does not know who is calling. Asks from scratch."))
+            st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+📞 <i>[Caller llama desde su móvil +1-555-0192]</i><br>
+🤖 <b>Aria:</b> Hola, ¿me puede dar su número de orden?<br>
+👤 <b>Caller:</b> Sí, es RIA-dos-tres-cuatro-cinco-seis-A-B<br>
+🤖 <b>Aria:</b> No encontré ese número. ¿Me lo puede deletrear?<br>
+👤 <b>Caller:</b> R… I… A… dos… tres…<br>
+🔴 <i>[Agent Looping dispara — 14 sesiones con este patrón]</i><br>
+👤 <b>Caller:</b> <i>[cuelga]</i>
+</div>""", unsafe_allow_html=True)
+        with c2:
+            st.markdown("#### ✅ SHOULD-BE")
+            st.markdown(_t("El agente ya sabe quién llama antes de decir 'hola'.",
+                           "The agent already knows who is calling before saying 'hello'."))
+            st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+📞 <i>[Caller llama desde su móvil +1-555-0192]</i><br>
+🟡 <i>[CustomerByTelephone(ani=+15550192) → María García encontrada]</i><br>
+🤖 <b>Aria:</b> Hola María, ¿en qué le puedo ayudar hoy?<br>
+👤 <b>Caller:</b> Quiero saber el estado de mi transferencia.<br>
+🤖 <b>Aria:</b> Veo que tiene una transferencia reciente a México por $200. ¿Es sobre esa?<br>
+👤 <b>Caller:</b> Sí, exacto.<br>
+✅ <i>Sin spelleo. Sin número de orden. Resolución directa.</i>
+</div>""", unsafe_allow_html=True)
+        st.markdown("---")
+        col_l, col_r = st.columns([2,1])
         with col_r:
             st.metric(_t("Issues afectados", "Issues affected"), "#1, #3, #5")
             st.metric(_t("Sesiones", "Sessions"), "37")
             st.metric(_t("Tool nuevo requerido", "New tool required"), _t("No", "No"))
-            st.caption(_t(
+        with col_l:
+            st.warning(_t(
+                "**Pregunta directa para el Product Owner:** ¿Está `CustomerByTelephone` "
+                "activo en producción hoy? Si no, los issues #1, #3 y #5 son consecuencia "
+                "de un prerequisito faltante, no de un error del agente. "
                 "Es el cambio de mayor palanca del roadmap completo.",
-                "Highest-leverage change in the entire roadmap.",
+                "**Direct question for the Product Owner:** Is `CustomerByTelephone` "
+                "active in production today? If not, issues #1, #3 and #5 are the consequence "
+                "of a missing prerequisite, not incorrect agent behaviour. "
+                "This is the highest-leverage change in the entire roadmap.",
             ))
 
     # ── PO-3 ──────────────────────────────────────────────────────────────
@@ -4600,52 +4632,58 @@ def page_po_recs():
             "La autenticación intent-driven existe en los principios, no en el agente",
             "Intent-driven authentication exists in the principles but not in the agent",
         ))
-        col_l, col_r = st.columns([2, 1])
-        with col_l:
+        st.info(_t(
+            '**CXI Design Principles #4:** "Informational intents → No CVP. '
+            'Transactional actions → CVP required." — '
+            'El agente hoy aplica CVP a todo por igual, sin clasificar primero.',
+            '**CXI Design Principles #4:** "Informational intents → No CVP. '
+            'Transactional actions → CVP required." — '
+            'The agent today applies CVP to everything equally, without classifying first.',
+        ))
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("#### ❌ AS-IS")
             st.markdown(_t(
-                "**Qué dicen los CXI Design Principles (principio #4):**",
-                "**What the CXI Design Principles say (principle #4):**",
+                "Caller hace una pregunta informacional → Aria lo mete al auth flow completo.",
+                "Caller asks an informational question → Aria sends them through the full auth flow.",
             ))
-            st.info(_t(
-                '"Authentication is triggered by intent sensitivity — not by default. '
-                'Informational intents → No CVP. Transactional actions → CVP required."',
-                '"Authentication is triggered by intent sensitivity — not by default. '
-                'Informational intents → No CVP. Transactional actions → CVP required."',
-            ))
+            st.markdown("""<div style='background:#fff0f0;border-left:3px solid #c44f3a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+👤 <b>Caller:</b> Hola, ¿cuánto cuesta enviar $200 a México?<br>
+🤖 <b>Aria:</b> Puedo ayudarle. Primero necesito verificar su identidad. ¿Me puede dar su número de orden?<br>
+👤 <b>Caller:</b> ¿Para saber el precio? No tengo ningún pedido…<br>
+🤖 <b>Aria:</b> Necesito autenticarle para continuar. ¿Cuál es su nombre completo?<br>
+👤 <b>Caller:</b> ¿En serio? Solo quería saber el fee…<br>
+🔴 <i>[CVP para una pregunta de fees — auth innecesaria, 3 speedbumps para nada]</i>
+</div>""", unsafe_allow_html=True)
+        with c2:
+            st.markdown("#### ✅ SHOULD-BE")
             st.markdown(_t(
-                "**Evidencia:** Sesiones `general_info` y parte de `transaction_status` "
-                "muestran al agente solicitando CVP para preguntas que no requieren acceso "
-                "a datos de cuenta (fees genéricos, ETA general, estado de servicios). "
-                "El path *Check Order ETA* dispara el auth flow completo incluso para "
-                "consultas informacionales.",
-                "**Evidence:** `general_info` and part of `transaction_status` sessions show "
-                "the agent requesting CVP for questions that require no account data access "
-                "(generic fees, general ETA, service status). The *Check Order ETA* path "
-                "triggers the full auth flow even for informational queries.",
+                "Aria clasifica el intent antes de decidir si necesita auth.",
+                "Aria classifies the intent before deciding if auth is needed.",
             ))
-            st.markdown(_t(
-                "**Recomendación:** Agregar un bloque *Pre-Auth Intent Classification* "
-                "como primer paso del journey principal, antes de `SetCallerType`:",
-                "**Recommendation:** Add a *Pre-Auth Intent Classification* block as the "
-                "first step of the main journey, before `SetCallerType`:",
-            ))
-            st.code(
-                "Clasificar intent ANTES de SetCallerType:\n"
-                "  (a) informacional → KB/FAQ sin auth\n"
-                "      fees, ETA genérico, estado servicios, horarios\n"
-                "  (b) transaccional → authentication segment\n"
-                "      status orden específica, cancelación, modificación\n\n"
-                "Nota: FAQ - KB RAG intent ya está LIVE (v.01) en producción.",
-                language="text",
-            )
+            st.markdown("""<div style='background:#f0fff4;border-left:3px solid #6c8d5a;padding:0.8rem 1rem;border-radius:3px;font-size:0.88rem;line-height:1.8'>
+👤 <b>Caller:</b> Hola, ¿cuánto cuesta enviar $200 a México?<br>
+🟡 <i>[Intent → "fee inquiry" → informacional → sin auth]</i><br>
+🤖 <b>Aria:</b> ¡Claro! Enviar $200 a México tiene un fee de $4.99. El tipo de cambio hoy es 17.20 MXN por dólar. ¿Le gustaría iniciar una transferencia?<br>
+👤 <b>Caller:</b> Perfecto, gracias.<br>
+✅ <i>Pregunta resuelta en 2 turnos. Sin auth. Sin número de orden.</i>
+</div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
+        col_l, col_r = st.columns([2,1])
         with col_r:
-            st.metric(_t("Sesiones afectadas", "Sessions affected"),
-                      _t("~15-20%", "~15-20%"))
+            st.metric(_t("Sesiones informacionales", "Informational sessions"), "~15-20%")
             st.metric("FAQ - KB RAG", "LIVE v.01")
             st.metric(_t("Tool nuevo requerido", "New tool required"), _t("No", "No"))
-            st.caption(_t(
-                "El intent FAQ ya existe — solo falta el triage en Front of Door.",
-                "The FAQ intent already exists — only Front of Door triage is missing.",
+        with col_l:
+            st.success(_t(
+                "**Impacto:** Los callers con preguntas informacionales (fees, horarios, "
+                "países disponibles, ETA genérico) obtienen respuesta en 2 turnos sin "
+                "pasar por auth. El intent FAQ-KB RAG ya está LIVE — solo falta activar "
+                "el triage antes de SetCallerType.",
+                "**Impact:** Callers with informational questions (fees, hours, available "
+                "countries, generic ETA) get an answer in 2 turns without going through auth. "
+                "The FAQ-KB RAG intent is already LIVE — only the triage before SetCallerType is missing.",
             ))
 
     # ── Resumen ──────────────────────────────────────────────────────────
