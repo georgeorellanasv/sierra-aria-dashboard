@@ -1891,6 +1891,41 @@ def render_customer_journey_friction(sessions: pd.DataFrame,
     ))
     _analysis_block(bullets)
 
+    st.info(_t(
+        "**¿Por qué los denominadores cambian en cada etapa?** "
+        "Este gráfico es un **funnel**, no un corte transversal. "
+        "Cada etapa solo cuenta las sesiones que *llegaron* a ella — es decir, "
+        "las que superaron todas las etapas anteriores sin fricción.\n\n"
+        "**Ejemplo con los números reales:** Las 111 sesiones entran en Stage 1 (Greeting). "
+        "De esas, ~32 abandonaron antes de capturar ningún intent (29% de fricción). "
+        "Las 79 restantes son las únicas que *pudieron* llegar a Stage 2 (Intent recognition) "
+        "— por eso el denominador de Stage 2 es 79, no 111. "
+        "De esas 79, 46 tuvieron un `unsupportedIntent:*` (58%). "
+        "El proceso se repite: solo las que superan Stage 2 entran en Stage 3, y así sucesivamente.\n\n"
+        "**Por qué importa este diseño:** Si usáramos 111 como denominador en todas las etapas, "
+        "estaríamos contando en Stage 3 sesiones que ya colgaron en Stage 1 — "
+        "lo que subestimaría artificialmente la fricción en las etapas tardías. "
+        "El funnel garantiza que cada porcentaje refleja exclusivamente "
+        "a los callers que *realmente llegaron* a esa etapa. "
+        "Las barras grises del gráfico muestran visualmente cómo se reduce ese grupo en cada paso.",
+        "**Why do the denominators change at each stage?** "
+        "This chart is a **funnel**, not a cross-sectional snapshot. "
+        "Each stage only counts the sessions that *reached* it — meaning those that "
+        "cleared all previous stages without friction.\n\n"
+        "**Example with the real numbers:** All 111 sessions enter Stage 1 (Greeting). "
+        "Of those, ~32 dropped before any intent was captured (29% friction). "
+        "The remaining 79 are the only ones that could *reach* Stage 2 (Intent recognition) "
+        "— which is why Stage 2's denominator is 79, not 111. "
+        "Of those 79, 46 hit an `unsupportedIntent:*` tag (58%). "
+        "The process repeats: only sessions clearing Stage 2 enter Stage 3, and so on.\n\n"
+        "**Why this design matters:** If we used 111 as the denominator at every stage, "
+        "we would be counting sessions in Stage 3 that already dropped at Stage 1 — "
+        "which would artificially understate friction at the later stages. "
+        "The funnel ensures every percentage reflects exclusively "
+        "the callers who *actually reached* that stage. "
+        "The grey bars in the chart visually show how that group shrinks at each step.",
+    ))
+
     with st.expander(_t(
         "📐  ¿Cómo se clasifica el nivel de fricción? — ver criterios por etapa",
         "📐  How is friction level classified? — see criteria per stage",
