@@ -1,5 +1,11 @@
 # Sierra / Aria — Análisis de `Check Order Status` (transaction status)
 
+---
+
+> **Actualizado 2026-04-27** — Se añadió la sección §PO al cruzar los hallazgos de este análisis con la documentación oficial del PO Jerónimo Ovejas en Confluence (espacio CXI): Feb-26 Sierra Journey SOP, Conversational Design Principles, CXI Design Principles. Las recomendaciones §PO identifican gaps entre el diseño documentado y el comportamiento observado en producción.
+
+---
+
 *Generado: 2026-04-22T17:06:11*  
 Dataset: **8113** sesiones listadas · **111** con detalle · **110** clasificadas por Sonnet.
 
@@ -353,3 +359,128 @@ Dataset: **8113** sesiones listadas · **111** con detalle · **110** clasificad
   - Agent called tool:GetEstimatedDelivery without successful tool:AttemptCvpAuthentication, triggering a no-authentication error
   - Agent called tool:OrderOverview before customer was authenticated, violating intended flow
   - **Sugerencia:** In the 'Intents Where User Needs to Authenticate' journey block, enforce a hard gate: tool:CustomerByOrderNumber must return a success response before the agent collects any CVP answers, and tool:AttemptCvpAuthentication must return success before tool:GetEstimatedDelivery or tool:DetailedOrder is invoked. Add an explicit pre-condition check in the block that aborts to a 'cannot proceed without authentication' message if either call fails, rather than allowing the agent to improvise alternative questions (date of birth, destination amount) or surface order details unauthenticated.
+
+---
+
+## §PO · Recomendaciones para el Product Owner
+
+> Fuente: cruce entre datos observados (110 sesiones clasificadas, 444 resultados de monitor) y documentación oficial del PO en Confluence CXI: **Feb-26 Sierra Journey SOP**, **Conversational Design Principles**, **CXI Design Principles** (última actualización Confluence: 2026-04-27).
+>
+> El patrón dominante: **el SOP está bien escrito, pero tiene cuatro gaps de diseño que el agente no puede resolver por sí solo.** Ninguna mejora en el Agent Builder cierra estos gaps — requieren una decisión del Product Owner.
+
+---
+
+### PO-1 · El SOP diseña el loop CVP — falta un hard-exit counter
+
+**Qué dice el SOP (§5.3):** _"If unsuccessful: Allow retry. Do not transfer."_
+
+No hay límite de intentos. No hay contador. No hay condición de salida. El agente sigue la instrucción al pie de la letra — y por eso se queda en loop.
+
+**Evidencia observada:** 9 sesiones críticas con CVP loop sin salida. En todas, el agente re-preguntó las mismas tres preguntas entre 3 y 6 veces consecutivas sin acción correctiva. El monitor _Agent Looping_ disparó en 44/111 sesiones (40%) pero no está conectado a ningún recovery flow.
+
+**Recomendación:** Agregar al SOP §5.3 una condición de salida explícita:
+
+```
+Después de 2 intentos fallidos consecutivos de AttemptCvpAuthentication
+con los mismos parámetros:
+  → CreateZendeskTicket(reason="cvp_authentication_failed")
+  → Informar al caller que un agente humano hará seguimiento
+  → No transferir por SIP
+```
+
+El fallback correcto es Manual CVP via CXi, tal como definen los Conversational Design Principles. `CreateZendeskTicket` ya existe — no requiere tool nuevo.
+
+**Issues afectados:** #2 (9 sesiones críticas)
+
+---
+
+### PO-2 · CustomerByTelephone está en los principios de diseño, no en el agente
+
+**Qué dicen los Conversational Design Principles:**
+
+> _"At the front of door, we will use the Customer by Telephone API… to identify the caller and retrieve relevant transaction and ticket information. This reduces the need to ask callers to identify their type and enables proactive support."_
+
+El CXI Design Principles lo lista como principio #2 — _Identify Before You Interact_ — describiendo su uso **inmediatamente al inicio de la llamada**, antes de cualquier pregunta.
+
+**Evidencia observada:** En 110 sesiones con transcripts y traces completos, **no hay una sola llamada a `CustomerByTelephone`** — ni al inicio ni como fallback. El Issue #3 ("agent never calls CustomerByTelephone as fallback") afecta 14 sesiones. Si el Front of Door lookup estuviera activo, la mayoría de esos casos no habrían requerido deletrear el número de orden.
+
+**Pregunta directa para el PO:** ¿Está `CustomerByTelephone` implementado en producción hoy? Si no, los Issues #1, #3 y #5 del log (37 sesiones en total) son consecuencia de un prerequisito faltante, no de un comportamiento incorrecto del agente.
+
+**Recomendación:** Confirmar el estado de implementación del Front of Door lookup. Si no está activo, priorizar su activación antes de cualquier otro cambio al authentication segment — reduce la fricción en ~60-70% de las llamadas transaccionales.
+
+**Issues afectados:** #1, #3, #5 (37 sesiones) — cambio de mayor palanca del roadmap completo.
+
+---
+
+### PO-3 · Los monitores detectan loops pero no están conectados a ningún recovery flow
+
+**Qué dice el SOP (§11 — Compliance Checklist):** Valida que las reglas estén configuradas. No define ninguna acción automática cuando un monitor se dispara.
+
+**Evidencia observada:**
+
+| Monitor | Sesiones afectadas |
+|---|---|
+| Agent Looping | 44 / 111 (40%) |
+| False Transfer | 13 / 111 (12%) |
+| Frustration Increase | 12 / 111 (11%) |
+
+En todos los casos, el monitor detectó el problema y el agente continuó exactamente igual. Sierra usa los monitores como telemetría pasiva, no como triggers de comportamiento.
+
+**Recomendación:** Agregar al SOP y a los Global Rules una sección de _Monitor-Triggered Recovery_:
+
+```
+Si Agent Looping dispara:
+  → Interrumpir flujo actual
+  → Ofrecer al caller: (a) continuar por ruta diferente, (b) Zendesk ticket
+
+Si Frustration Increase dispara:
+  → Activar empathy escalation language
+  → Reducir speedbumps para el resto de la llamada
+
+Si False Transfer dispara:
+  → Verificar estado de transferencia antes de anunciarla al caller
+```
+
+No requiere tools nuevos. Convierte 40% de sesiones que hoy terminan en loop en sesiones con resolución controlada.
+
+**Issues afectados:** Todos los loops — 44/111 sesiones.
+
+---
+
+### PO-4 · La autenticación intent-driven existe en los principios, no en el agente
+
+**Qué dicen los CXI Design Principles (principio #4):**
+
+> _"Authentication is triggered by intent sensitivity — not by default. Informational intents → No CVP. Transactional actions → CVP required."_
+
+Los Conversational Design Principles lo confirman: _"CVP will not be used for informational intents."_
+
+**Evidencia observada:** Sesiones clasificadas como `general_info` y parte de `transaction_status` incluyen casos donde el agente solicitó autenticación para responder preguntas que no requieren acceso a datos de cuenta (fees genéricos, tiempos de entrega generales, estado de servicios). El path _Check Order ETA_ dispara el auth flow completo incluso para consultas informacionales.
+
+**El gap:** No existe en el agente actual un bloque de _intent triage_ que clasifique la consulta como informacional vs. transaccional antes de enrutar al authentication segment.
+
+**Recomendación:** Agregar un bloque _Pre-Auth Intent Classification_ como primer paso del journey principal:
+
+```
+Antes de SetCallerType:
+  Clasificar intent como:
+    (a) informacional → responder con KB/FAQ sin auth
+        Ejemplos: fees, ETA genérico, estado de servicios, horarios
+    (b) transaccional → authentication segment
+        Ejemplos: status de orden específica, cancelación, modificación
+```
+
+El intent _FAQ - KB RAG_ ya está LIVE en producción (v.01). Este cambio implica que el Front of Door debe enrutar correctamente a ese intent antes de llegar al authentication segment. No requiere tool nuevo.
+
+**Issues afectados:** ~15-20% de sesiones con intents informativos.
+
+---
+
+### Tabla resumen
+
+| # | Recomendación | Fuente Confluence | Issues | Tool nuevo |
+|---|---|---|---|---|
+| PO-1 | Hard-exit counter en SOP §5.3 (2 intentos CVP → Zendesk ticket) | Feb-26 SOP §5.3 + Conversational Design Principles | #2 (9 sesiones) | No |
+| PO-2 | Confirmar y activar CustomerByTelephone en Front of Door | Conversational Design Principles + CXI Design Principles §2 | #1, #3, #5 (37 sesiones) | No |
+| PO-3 | Monitor-Triggered Recovery flows en Global Rules | Feb-26 SOP §11 (gap) | 44/111 sesiones | No |
+| PO-4 | Pre-Auth Intent Classification antes de SetCallerType | CXI Design Principles §4 + Conversational Design Principles | ~15-20% sesiones | No |

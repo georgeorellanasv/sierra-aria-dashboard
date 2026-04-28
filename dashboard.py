@@ -282,6 +282,7 @@ def inline_gap_refs(gap_ids: list[int]) -> None:
 PAGES_MAIN = {
     "Overview":      "🔎",
     "Gap Proposals": "🎯",
+    "PO Recs":       "📌",
     "Glossary":      "📖",
 }
 PAGES_ADV = {
@@ -3593,6 +3594,249 @@ def page_investigate():
 
 
 # ---------------------------------------------------------------------------
+# PAGE — PO Recommendations
+# ---------------------------------------------------------------------------
+
+def page_po_recs():
+    st.title(_t("📌  Recomendaciones para el Product Owner",
+                "📌  Product Owner Recommendations"))
+    st.caption(_t(
+        "Gaps entre el diseño documentado en Confluence (Feb-26 Sierra Journey SOP · "
+        "Conversational Design Principles · CXI Design Principles) y el comportamiento "
+        "observado en producción. Ninguna cierra con un cambio en el Agent Builder — "
+        "requieren una decisión del PO.",
+        "Gaps between the documented design in Confluence (Feb-26 Sierra Journey SOP · "
+        "Conversational Design Principles · CXI Design Principles) and observed production "
+        "behaviour. None of these close with an Agent Builder change — they require a PO decision.",
+    ))
+
+    SLATE = "#6A8CAA"
+    badge_css = (
+        f"background:{SLATE};color:#fff;padding:2px 10px;border-radius:3px;"
+        "font-size:0.72rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;"
+        "display:inline-block;margin-bottom:0.4rem;"
+    )
+
+    # ── PO-1 ──────────────────────────────────────────────────────────────
+    with st.container(border=True):
+        st.markdown(f'<span style="{badge_css}">PO-1</span>', unsafe_allow_html=True)
+        st.subheader(_t(
+            "El SOP diseña el loop CVP — falta un hard-exit counter",
+            "The SOP by design creates the CVP loop — it needs a hard-exit counter",
+        ))
+        col_l, col_r = st.columns([2, 1])
+        with col_l:
+            st.markdown(_t(
+                "**Qué dice el SOP (§5.3):**",
+                "**What the SOP says (§5.3):**",
+            ))
+            st.info(_t(
+                '"Si la autenticación falla: Allow retry. Do not transfer."  \n'
+                "No hay límite de intentos. No hay contador. No hay condición de salida. "
+                "El agente sigue la instrucción al pie de la letra — y por eso entra en loop.",
+                '"If authentication fails: Allow retry. Do not transfer."  \n'
+                "No attempt limit. No counter. No exit condition. The agent follows the "
+                "instruction exactly — and that is why it loops.",
+            ))
+            st.markdown(_t(
+                "**Recomendación:** Agregar al SOP §5.3 una condición de salida:",
+                "**Recommendation:** Add to SOP §5.3 an explicit exit condition:",
+            ))
+            st.code(
+                "Después de 2 intentos fallidos de AttemptCvpAuthentication\n"
+                "  → CreateZendeskTicket(reason='cvp_authentication_failed')\n"
+                "  → Informar al caller: seguimiento por agente humano\n"
+                "  → No transferir por SIP\n"
+                "  (fallback: Manual CVP via CXi — ya definido en Design Principles)",
+                language="text",
+            )
+        with col_r:
+            st.metric(_t("Issues afectados", "Issues affected"), "#2")
+            st.metric(_t("Sesiones críticas", "Critical sessions"), "9")
+            st.metric(_t("Tool nuevo requerido", "New tool required"), _t("No", "No"))
+            st.caption(_t(
+                "`CreateZendeskTicket` ya existe en el agente.",
+                "`CreateZendeskTicket` already exists in the agent.",
+            ))
+
+    # ── PO-2 ──────────────────────────────────────────────────────────────
+    with st.container(border=True):
+        st.markdown(f'<span style="{badge_css}">PO-2</span>', unsafe_allow_html=True)
+        st.subheader(_t(
+            "CustomerByTelephone está en los principios de diseño, no en el agente",
+            "CustomerByTelephone is in the design principles but absent from the agent",
+        ))
+        col_l, col_r = st.columns([2, 1])
+        with col_l:
+            st.markdown(_t(
+                "**Qué dicen los Conversational Design Principles:**",
+                "**What the Conversational Design Principles say:**",
+            ))
+            st.info(_t(
+                '"At the front of door, we will use the Customer by Telephone API to identify '
+                "the caller and retrieve relevant transaction information. This reduces the need "
+                'to ask callers to identify their type and enables proactive support."',
+                '"At the front of door, we will use the Customer by Telephone API to identify '
+                "the caller and retrieve relevant transaction information. This reduces the need "
+                'to ask callers to identify their type and enables proactive support."',
+            ))
+            st.markdown(_t(
+                "**Evidencia:** En 110 sesiones scrapeadas con transcripts y traces completos, "
+                "**no hay una sola llamada a `CustomerByTelephone`** — ni al inicio ni como fallback.",
+                "**Evidence:** Across 110 scraped sessions with complete transcripts and traces, "
+                "**there is not a single call to `CustomerByTelephone`** — neither at call start nor as fallback.",
+            ))
+            st.warning(_t(
+                "**Pregunta directa para el PO:** ¿Está `CustomerByTelephone` implementado "
+                "en producción hoy? Si no, los Issues #1, #3 y #5 (37 sesiones) son consecuencia "
+                "de un prerequisito faltante, no de un error del agente.",
+                "**Direct question for the PO:** Is `CustomerByTelephone` implemented in production "
+                "today? If not, Issues #1, #3 and #5 (37 sessions) are the consequence of a missing "
+                "prerequisite, not incorrect agent behaviour.",
+            ))
+        with col_r:
+            st.metric(_t("Issues afectados", "Issues affected"), "#1, #3, #5")
+            st.metric(_t("Sesiones", "Sessions"), "37")
+            st.metric(_t("Tool nuevo requerido", "New tool required"), _t("No", "No"))
+            st.caption(_t(
+                "Es el cambio de mayor palanca del roadmap completo.",
+                "Highest-leverage change in the entire roadmap.",
+            ))
+
+    # ── PO-3 ──────────────────────────────────────────────────────────────
+    with st.container(border=True):
+        st.markdown(f'<span style="{badge_css}">PO-3</span>', unsafe_allow_html=True)
+        st.subheader(_t(
+            "Los monitores de Sierra detectan loops pero no tienen recovery flow",
+            "Sierra monitors detect loops but are not wired to any recovery flow",
+        ))
+        col_l, col_r = st.columns([2, 1])
+        with col_l:
+            st.markdown(_t(
+                "**Qué dice el SOP (§11 — Compliance Checklist):** Valida que las reglas "
+                "estén configuradas. No define ninguna acción automática cuando un monitor dispara.",
+                "**What the SOP says (§11 — Compliance Checklist):** Validates that rules are "
+                "configured. Does not define any automatic action when a monitor fires.",
+            ))
+            monitor_data = {
+                _t("Monitor", "Monitor"): ["Agent Looping", "False Transfer", "Frustration Increase"],
+                _t("Sesiones afectadas", "Sessions affected"): ["44 / 111 (40%)", "13 / 111 (12%)", "12 / 111 (11%)"],
+                _t("Acción al disparar", "Action on fire"): [
+                    _t("Ninguna — agente continúa en loop", "None — agent continues looping"),
+                    _t("Ninguna — agente repite el anuncio", "None — agent repeats the announcement"),
+                    _t("Ninguna — agente ignora la señal", "None — agent ignores the signal"),
+                ],
+            }
+            st.dataframe(monitor_data, use_container_width=True, hide_index=True)
+            st.markdown(_t(
+                "**Recomendación:** Agregar a Global Rules una sección *Monitor-Triggered Recovery*:",
+                "**Recommendation:** Add a *Monitor-Triggered Recovery* section to Global Rules:",
+            ))
+            st.code(
+                "Agent Looping dispara:\n"
+                "  → Interrumpir flujo → ofrecer (a) ruta alternativa o (b) Zendesk ticket\n\n"
+                "Frustration Increase dispara:\n"
+                "  → Activar empathy language → reducir speedbumps restantes\n\n"
+                "False Transfer dispara:\n"
+                "  → Verificar estado de transferencia antes de anunciar al caller",
+                language="text",
+            )
+        with col_r:
+            st.metric(_t("Sesiones con looping", "Sessions with looping"), "44 / 111")
+            st.metric(_t("% del total", "% of total"), "40%")
+            st.metric(_t("Tool nuevo requerido", "New tool required"), _t("No", "No"))
+
+    # ── PO-4 ──────────────────────────────────────────────────────────────
+    with st.container(border=True):
+        st.markdown(f'<span style="{badge_css}">PO-4</span>', unsafe_allow_html=True)
+        st.subheader(_t(
+            "La autenticación intent-driven existe en los principios, no en el agente",
+            "Intent-driven authentication exists in the principles but not in the agent",
+        ))
+        col_l, col_r = st.columns([2, 1])
+        with col_l:
+            st.markdown(_t(
+                "**Qué dicen los CXI Design Principles (principio #4):**",
+                "**What the CXI Design Principles say (principle #4):**",
+            ))
+            st.info(_t(
+                '"Authentication is triggered by intent sensitivity — not by default. '
+                'Informational intents → No CVP. Transactional actions → CVP required."',
+                '"Authentication is triggered by intent sensitivity — not by default. '
+                'Informational intents → No CVP. Transactional actions → CVP required."',
+            ))
+            st.markdown(_t(
+                "**Evidencia:** Sesiones `general_info` y parte de `transaction_status` "
+                "muestran al agente solicitando CVP para preguntas que no requieren acceso "
+                "a datos de cuenta (fees genéricos, ETA general, estado de servicios). "
+                "El path *Check Order ETA* dispara el auth flow completo incluso para "
+                "consultas informacionales.",
+                "**Evidence:** `general_info` and part of `transaction_status` sessions show "
+                "the agent requesting CVP for questions that require no account data access "
+                "(generic fees, general ETA, service status). The *Check Order ETA* path "
+                "triggers the full auth flow even for informational queries.",
+            ))
+            st.markdown(_t(
+                "**Recomendación:** Agregar un bloque *Pre-Auth Intent Classification* "
+                "como primer paso del journey principal, antes de `SetCallerType`:",
+                "**Recommendation:** Add a *Pre-Auth Intent Classification* block as the "
+                "first step of the main journey, before `SetCallerType`:",
+            ))
+            st.code(
+                "Clasificar intent ANTES de SetCallerType:\n"
+                "  (a) informacional → KB/FAQ sin auth\n"
+                "      fees, ETA genérico, estado servicios, horarios\n"
+                "  (b) transaccional → authentication segment\n"
+                "      status orden específica, cancelación, modificación\n\n"
+                "Nota: FAQ - KB RAG intent ya está LIVE (v.01) en producción.",
+                language="text",
+            )
+        with col_r:
+            st.metric(_t("Sesiones afectadas", "Sessions affected"),
+                      _t("~15-20%", "~15-20%"))
+            st.metric("FAQ - KB RAG", "LIVE v.01")
+            st.metric(_t("Tool nuevo requerido", "New tool required"), _t("No", "No"))
+            st.caption(_t(
+                "El intent FAQ ya existe — solo falta el triage en Front of Door.",
+                "The FAQ intent already exists — only Front of Door triage is missing.",
+            ))
+
+    # ── Resumen ──────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader(_t("Resumen", "Summary"))
+    summary = {
+        "#": ["PO-1", "PO-2", "PO-3", "PO-4"],
+        _t("Recomendación", "Recommendation"): [
+            _t("Hard-exit counter CVP (2 intentos → Zendesk ticket)",
+               "CVP hard-exit counter (2 attempts → Zendesk ticket)"),
+            _t("Activar CustomerByTelephone en Front of Door",
+               "Activate CustomerByTelephone at Front of Door"),
+            _t("Monitor-Triggered Recovery en Global Rules",
+               "Monitor-Triggered Recovery in Global Rules"),
+            _t("Pre-Auth Intent Classification antes de SetCallerType",
+               "Pre-Auth Intent Classification before SetCallerType"),
+        ],
+        _t("Fuente Confluence", "Confluence source"): [
+            "Feb-26 SOP §5.3 + Conversational Design Principles",
+            "Conversational Design Principles + CXI Design Principles §2",
+            "Feb-26 SOP §11 (gap)",
+            "CXI Design Principles §4 + Conversational Design Principles",
+        ],
+        _t("Issues", "Issues"): ["#2 (9 ses.)", "#1,#3,#5 (37 ses.)", "44/111 (40%)", "~15-20% ses."],
+        _t("Tool nuevo", "New tool"): ["No", "No", "No", "No"],
+    }
+    st.dataframe(summary, use_container_width=True, hide_index=True)
+    st.caption(_t(
+        "Nota metodológica: análisis cruzado entre 110 sesiones clasificadas + 444 resultados "
+        "de monitor y la documentación oficial del PO en el espacio CXI de Confluence "
+        "(última actualización: 2026-04-27).",
+        "Methodological note: cross-analysis of 110 classified sessions + 444 monitor results "
+        "against the PO's official documentation in the CXI Confluence space "
+        "(last updated: 2026-04-27).",
+    ))
+
+
+# ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
 
@@ -3602,6 +3846,8 @@ elif page == "Investigate":
     page_investigate()
 elif page == "Gap Proposals":
     page_gap_drilldown()
+elif page == "PO Recs":
+    page_po_recs()
 elif page == "Simulations":
     page_simulations()
 elif page == "Glossary":
