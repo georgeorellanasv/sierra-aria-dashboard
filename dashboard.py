@@ -283,6 +283,7 @@ PAGES_MAIN = {
     "Overview":      "🔎",
     "Gap Proposals": "🎯",
     "PO Recs":       "📌",
+    "Strategic":     "🧠",
     "Glossary":      "📖",
 }
 PAGES_ADV = {
@@ -3594,6 +3595,754 @@ def page_investigate():
 
 
 # ---------------------------------------------------------------------------
+# PAGE — Strategic Analysis (Sierra Platform Deep Dive)
+# ---------------------------------------------------------------------------
+
+def page_strategic():
+    st.title(_t("🧠  Plataforma Sierra — Análisis Estratégico",
+                "🧠  Sierra Platform — Strategic Analysis"))
+    st.caption(_t(
+        "Análisis de cómo se están usando las capacidades de Sierra vs. su potencial real. "
+        "Basado en 110 sesiones clasificadas · 444 resultados de monitor · "
+        "documentación oficial del Product Owner en Confluence CXI.",
+        "Analysis of how Sierra's capabilities are being used vs. their real potential. "
+        "Based on 110 classified sessions · 444 monitor results · "
+        "Product Owner's official documentation in Confluence CXI.",
+    ))
+
+    SLATE  = "#6A8CAA"
+    CLAY   = "#CC785C"
+    SAND   = "#C9A27E"
+    GREEN  = "#6c8d5a"
+
+    def section_badge(label, color=SLATE):
+        st.markdown(
+            f'<span style="background:{color};color:#fff;padding:2px 12px;'
+            f'border-radius:3px;font-size:0.72rem;font-weight:700;'
+            f'letter-spacing:0.08em;text-transform:uppercase;">{label}</span>',
+            unsafe_allow_html=True,
+        )
+
+    tab_tools, tab_opps, tab_monitors, tab_sims, tab_kb, tab_cx = st.tabs([
+        _t("1 · Herramientas", "1 · Tools"),
+        _t("2 · Top 3 oportunidades", "2 · Top 3 opportunities"),
+        _t("3 · Monitors activos", "3 · Active monitors"),
+        _t("4 · Simulations CI/CD", "4 · Simulations CI/CD"),
+        _t("5 · KB Feedback Loop", "5 · KB Feedback Loop"),
+        _t("6 · Alineación CX", "6 · CX Alignment"),
+    ])
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 1 — TOOL USAGE DIAGNOSTIC
+    # ══════════════════════════════════════════════════════════════════════
+    with tab_tools:
+        section_badge(_t("Diagnóstico", "Diagnostic"), CLAY)
+        st.subheader(_t(
+            "Sierra tiene 17 herramientas disponibles. Opera como si tuviera 5.",
+            "Sierra has 17 tools available. It operates as if it had 5.",
+        ))
+        st.markdown(_t(
+            "La herramienta marcada como fundacional en los Conversational Design "
+            "Principles del Product Owner registró **0 invocaciones en 110 sesiones**. "
+            "No es subutilización — es deuda de implementación crítica que colapsa "
+            "todo el flujo de autenticación downstream.",
+            "The tool defined as foundational in the Product Owner's Conversational "
+            "Design Principles recorded **0 invocations across 110 sessions**. "
+            "This is not underutilisation — it is critical implementation debt that "
+            "collapses the entire downstream authentication flow.",
+        ))
+
+        tool_data = {
+            _t("Herramienta", "Tool"): [
+                "CustomerByTelephone", "AttemptCvpAuthentication",
+                "SearchFAQKnowledge", "CreateZendeskTicket",
+                "SetCallerType", "CustomerByOrderNumber",
+                "tool:transfer (SIP)", "OrderDetails / DetailedOrder",
+                "CheckTransactionCancellationEligibility", "SubmitCSATScore",
+            ],
+            _t("Estado de uso", "Usage status"): [
+                "❌ 0/110 sesiones",
+                "⚠️  Activo — preguntas incorrectas en 5 ses. críticas",
+                "⚠️  Activo — skip previo a transfer en info-intents",
+                "⚠️  Existe — no usado como salida controlada de CVP",
+                "⚠️  Activo — no discrimina agente interno vs. cliente",
+                "✅  Activo",
+                "⚠️  Activo — dispara prematuro o en loop",
+                "✅  Activo — posible alias duplicado confunde al LLM",
+                "✅  Activo — solo si llega al cancel flow",
+                "⚠️  Configurado — raro verlo completar",
+            ],
+            _t("Issues generados", "Issues generated"): [
+                "#3 (14 ses.), #4 (5), #5 (14), #6 (10) → 43 ses. únicas",
+                "#2 (9 ses.) — loop CVP",
+                "#7 (12 ses.) — bloquea transfer, no consulta KB primero",
+                "Gap: debería ser salida de CVP loop (PO-1)",
+                "#5 (14 ses.) — agentes internos por CVP de cliente",
+                "Correcto cuando se invoca",
+                "#1 (8 ses.) — loop · #9 (2 ses.) — transfer sin auth",
+                "Correcto",
+                "Correcto en sequence",
+                "Gap: sin CSAT → sin signal de calidad post-resolución",
+            ],
+        }
+        st.dataframe(tool_data, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        col1.metric(
+            _t("CustomerByTelephone invocaciones", "CustomerByTelephone invocations"),
+            "0 / 110", delta=_t("debería ser ≥85%", "should be ≥85%"),
+            delta_color="inverse",
+        )
+        col2.metric(
+            _t("Sesiones afectadas por tool ausente", "Sessions affected by absent tool"),
+            "43 / 110", delta="39%", delta_color="inverse",
+        )
+        col3.metric(
+            _t("Issues Critical con causa-raíz en tools", "Critical issues rooted in tools"),
+            "6 / 8", delta=_t("4 resolubles sin tool nuevo", "4 solvable with no new tool"),
+        )
+
+        st.info(_t(
+            "**Causa raíz única:** `CustomerByTelephone` no se invoca → el agente "
+            "entra directamente a CVP manual → preguntas mal formuladas → auth falla → "
+            "loop → monitor dispara → nada cambia. Es una cascada de un solo eslabón roto.",
+            "**Single root cause:** `CustomerByTelephone` is not invoked → agent goes "
+            "straight to manual CVP → wrong questions → auth fails → loop → monitor "
+            "fires → nothing changes. A cascade from a single broken link.",
+        ))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 2 — TOP 3 OPPORTUNITIES
+    # ══════════════════════════════════════════════════════════════════════
+    with tab_opps:
+        section_badge(_t("Sin tools nuevos", "No new tools needed"), GREEN)
+        st.subheader(_t(
+            "3 cambios de orquestación que eliminan el 65% de los issues críticos",
+            "3 orchestration changes that eliminate 65% of critical issues",
+        ))
+        st.markdown(_t(
+            "Todos son fixes de **lógica de orquestación**, no de capability gaps. "
+            "El stack de herramientas ya está disponible.",
+            "All are **orchestration logic** fixes, not capability gaps. "
+            "The tool stack is already available.",
+        ))
+
+        # Oportunidad 1
+        with st.container(border=True):
+            col_h, col_m = st.columns([3, 1])
+            with col_h:
+                st.markdown(f"### {_t('Oportunidad 1', 'Opportunity 1')} — `CustomerByTelephone` Front-of-Door")
+                st.markdown(_t(
+                    "Forzar `CustomerByTelephone` como primer tool call obligatorio "
+                    "antes de cualquier pregunta al caller. El tool existe, está "
+                    "documentado como fundacional en los Design Principles del Product Owner, "
+                    "y simplemente no se invoca. La diferencia entre identificar al cliente "
+                    "por ANI vs. preguntar manualmente es la diferencia entre un IVR moderno "
+                    "y un call center de 2005.",
+                    "Force `CustomerByTelephone` as mandatory first tool call before "
+                    "any question to the caller. The tool exists, is documented as foundational "
+                    "in the Product Owner's Design Principles, and is simply not being invoked. "
+                    "The difference between identifying the customer by ANI vs. asking manually "
+                    "is the difference between a modern IVR and a 2005 call centre.",
+                ))
+                st.code(
+                    "# Secuencia obligatoria — turno 1\n"
+                    "SetCallerType()\n"
+                    "→ CustomerByTelephone(ani=caller_ani)\n"
+                    "→ if found: pre-load customer + transactions\n"
+                    "→ if not found: proceed to CustomerByOrderNumber\n"
+                    "→ NEVER skip this step",
+                    language="text",
+                )
+            with col_m:
+                st.metric(_t("Issues atacados", "Issues attacked"), "4")
+                st.metric(_t("Sesiones afectadas", "Sessions affected"), "43")
+                st.metric(_t("Esfuerzo", "Effort"), _t("Bajo", "Low"))
+                st.metric(_t("Tool nuevo", "New tool"), "No")
+
+        # Oportunidad 2
+        with st.container(border=True):
+            col_h, col_m = st.columns([3, 1])
+            with col_h:
+                st.markdown(f"### {_t('Oportunidad 2', 'Opportunity 2')} — {_t('Hard-exit CVP tras 3 intentos', 'Hard-exit CVP after 3 attempts')}")
+                st.warning(_t(
+                    "El SOP Feb-26 dice: *'If unsuccessful: Allow retry. Do not transfer.'* "
+                    "Sin límite. Esto **diseña el loop**. Los datos lo prueban: "
+                    "9 sesiones Critical con CVP loop infinito, monitor Agent Looping "
+                    "al 40%, simulation suite Auto-Transfer 0/6 passing.",
+                    "The Feb-26 SOP says: *'If unsuccessful: Allow retry. Do not transfer.'* "
+                    "No limit. This **designs the loop**. Data proves it: "
+                    "9 Critical sessions with infinite CVP loop, Agent Looping monitor "
+                    "at 40%, Auto-Transfer simulation suite 0/6 passing.",
+                ))
+                st.markdown(_t(
+                    "La regla correcta: **3 intentos máximo → transfer con contexto y empatía**. "
+                    "`CreateZendeskTicket` ya existe — no requiere tool nuevo.",
+                    "The correct rule: **3 attempts max → transfer with context and empathy**. "
+                    "`CreateZendeskTicket` already exists — no new tool needed.",
+                ))
+                st.code(
+                    "# SOP §5.3 — versión corregida\n"
+                    "cvp_attempts = 0\n"
+                    "while cvp_attempts < 3:\n"
+                    "    result = AttemptCvpAuthentication()\n"
+                    "    if result.success: break\n"
+                    "    cvp_attempts += 1\n"
+                    "if not result.success:\n"
+                    "    CreateZendeskTicket(reason='cvp_authentication_failed')\n"
+                    "    transfer_with_empathy(context=full_session)",
+                    language="python",
+                )
+            with col_m:
+                st.metric(_t("Issues atacados", "Issues attacked"), "#2")
+                st.metric(_t("Sesiones críticas", "Critical sessions"), "9")
+                st.metric(_t("Monitor looping", "Looping monitor"), "40%")
+                st.metric(_t("Esfuerzo", "Effort"), _t("Bajo-Medio", "Low-Med"))
+
+        # Oportunidad 3
+        with st.container(border=True):
+            col_h, col_m = st.columns([3, 1])
+            with col_h:
+                st.markdown(f"### {_t('Oportunidad 3', 'Opportunity 3')} — {_t('Intent triage antes de CVP', 'Intent triage before CVP')}")
+                st.markdown(_t(
+                    "Los CXI Design Principles del Product Owner (Principio #4) dicen: "
+                    "*'Informational intents → No CVP. Transactional actions → CVP required.'* "
+                    "El agente ignora esto. No existe un bloque de clasificación de intent "
+                    "antes del authentication segment — el camino más cercano siempre incluye CVP.",
+                    "The Product Owner's CXI Design Principles (Principle #4) state: "
+                    "*'Informational intents → No CVP. Transactional actions → CVP required.'* "
+                    "The agent ignores this. No intent classification block exists before the "
+                    "authentication segment — the closest path always includes CVP.",
+                ))
+                st.code(
+                    "# Bloque Pre-Auth Intent Classification\n"
+                    "# Insertar ANTES de SetCallerType\n"
+                    "intent = classify_intent(caller_utterance)\n\n"
+                    "if intent in INFORMATIONAL:  # fees, ETA genérico, horarios, países\n"
+                    "    SearchFAQKnowledge(query=intent)\n"
+                    "    → responder sin CVP\n\n"
+                    "elif intent in TRANSACTIONAL:  # status orden, cancel, modify\n"
+                    "    → authentication segment (CVP obligatorio)",
+                    language="python",
+                )
+            with col_m:
+                st.metric(_t("Sesiones informativas sin auth", "Info sessions without auth"),
+                          "~15-20%")
+                st.metric("FAQ-KB RAG", "LIVE v.01")
+                st.metric(_t("Esfuerzo", "Effort"), _t("Medio", "Medium"))
+                st.metric(_t("Tool nuevo", "New tool"), "No")
+
+        st.success(_t(
+            "**Impacto agregado estimado:** Las 3 oportunidades juntas atacan 6 de los "
+            "8 issues Critical y ~62 de las 87 sesiones afectadas por issues críticos (≈71%). "
+            "Costo: 2-3 sprints sin dependencias externas. Ninguna requiere tool nuevo.",
+            "**Estimated aggregate impact:** The 3 opportunities combined attack 6 of the "
+            "8 Critical issues and ~62 of the 87 sessions affected by critical issues (≈71%). "
+            "Cost: 2-3 sprints with no external dependencies. None requires a new tool.",
+        ))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 3 — MONITORS AS ACTIVE TRIGGERS
+    # ══════════════════════════════════════════════════════════════════════
+    with tab_monitors:
+        section_badge(_t("Sistema nervioso", "Nervous system"), CLAY)
+        st.subheader(_t(
+            "Los monitores generan telemetría pasiva. El siguiente nivel es que sean circuit breakers activos.",
+            "Monitors generate passive telemetry. The next level is making them active circuit breakers.",
+        ))
+        st.markdown(_t(
+            "Sierra construyó los monitores para ser triggers de comportamiento "
+            "en tiempo real durante la llamada. Hoy se usan como dashboards post-call. "
+            "La detección sin acción es observabilidad, no orquestación.",
+            "Sierra built monitors to be real-time behaviour triggers during the call. "
+            "Today they are used as post-call dashboards. "
+            "Detection without action is observability, not orchestration.",
+        ))
+
+        mon_col1, mon_col2, mon_col3, mon_col4 = st.columns(4)
+        mon_col1.metric("Agent Looping", "44/111", "40%", delta_color="inverse")
+        mon_col2.metric("False Transfer", "13/111", "12%", delta_color="inverse")
+        mon_col3.metric("Frustration Increase", "12/111", "11%", delta_color="inverse")
+        mon_col4.metric("Repeated Escalation", "3/111", "3%", delta_color="inverse")
+
+        st.markdown(_t("**Acción actual de los 4 monitores cuando disparan:** Ninguna.",
+                       "**Current action of all 4 monitors when they fire:** None."))
+        st.markdown("---")
+
+        st.markdown(_t("### Arquitectura propuesta: Monitor → Decision Layer → Recovery Flow",
+                       "### Proposed architecture: Monitor → Decision Layer → Recovery Flow"))
+
+        m1, m2 = st.columns(2)
+
+        with m1:
+            with st.container(border=True):
+                st.markdown(f"**Agent Looping (40%) — {_t('Pattern-Break + Reframe', 'Pattern-Break + Reframe')}**")
+                st.code(
+                    "on_trigger(agent_looping):\n"
+                    "  if recovery_attempts == 0:\n"
+                    "    inject('Let me try a different approach.')\n"
+                    "    SearchFAQKnowledge(last_user_intent)\n"
+                    "    set_state(recovery_attempted=1)\n"
+                    "  elif recovery_attempts == 1:\n"
+                    "    offer_choice(human=True, alternative_route=True)\n"
+                    "    if user_yes: transfer(reason='loop_recovery')\n"
+                    "  else:\n"
+                    "    transfer(reason='loop_unrecoverable')",
+                    language="python",
+                )
+                st.caption(_t("ROI: convierte 40% de sesiones en loop en resoluciones controladas.",
+                              "ROI: converts 40% of looping sessions into controlled resolutions."))
+
+            with st.container(border=True):
+                st.markdown(f"**False Transfer (12%) — {_t('Pre-flight Check', 'Pre-flight Check')}**")
+                st.code(
+                    "on_pre_transfer():  # antes de invocar tool:transfer\n"
+                    "  valid = (\n"
+                    "    user_explicitly_requested_human OR\n"
+                    "    cvp_failed_3x OR\n"
+                    "    intent_unsupported\n"
+                    "  )\n"
+                    "  if not valid:\n"
+                    "    log('false_transfer_prevented')\n"
+                    "    continue_in_agent()\n"
+                    "  else:\n"
+                    "    transfer(reason=validated_reason)",
+                    language="python",
+                )
+                st.caption(_t("Previene transfers prematuros antes de que ocurran.",
+                              "Prevents premature transfers before they occur."))
+
+        with m2:
+            with st.container(border=True):
+                st.markdown(f"**Frustration Increase (11%) — {_t('De-escalation Ladder', 'De-escalation Ladder')}**")
+                st.code(
+                    "on_trigger(frustration_increase, level):\n"
+                    "  if level == 'low':\n"
+                    "    soften_tone()\n"
+                    "    inject_acknowledgment()\n"
+                    "  elif level == 'medium':\n"
+                    "    CreateZendeskTicket(status='de_escalation')\n"
+                    "    offer_callback()\n"
+                    "  elif level == 'high':\n"
+                    "    transfer(priority='high',\n"
+                    "             reason='frustration_escalation')",
+                    language="python",
+                )
+                st.caption(_t("Convierte la frustración en señal de routing, no en abandono.",
+                              "Converts frustration into a routing signal, not an abandonment."))
+
+            with st.container(border=True):
+                st.markdown(f"**Repeated Escalation (3%) — {_t('Hard Exit Protocol', 'Hard Exit Protocol')}**")
+                st.code(
+                    "on_trigger(repeated_escalation):\n"
+                    "  bypass_normal_flow()\n"
+                    "  transfer(\n"
+                    "    priority='critical',\n"
+                    "    skill='senior_agent',\n"
+                    "    context=full_conversation_summary\n"
+                    "  )\n"
+                    "  flag_for_supervisor_review()",
+                    language="python",
+                )
+                st.caption(_t("Solo 3 sesiones hoy — pero cada una es un caso escalado sin resolución.",
+                              "Only 3 sessions today — but each is an unresolved escalated case."))
+
+        st.markdown("---")
+        st.markdown(_t("### Plan de implementación por fases", "### Phased implementation plan"))
+        phases = {
+            _t("Fase", "Phase"): ["1", "2", "3", "4"],
+            _t("Monitor", "Monitor"): [
+                "Agent Looping", "Frustration Increase",
+                "False Transfer (pre-flight)", "Repeated Escalation",
+            ],
+            _t("Esfuerzo", "Effort"): [
+                _t("Medio", "Medium"), _t("Medio", "Medium"),
+                _t("Alto", "High"), _t("Bajo", "Low"),
+            ],
+            _t("Razón de prioridad", "Priority reason"): [
+                "40% del total — mayor ROI", "11% — convierte señal en acción",
+                "Requiere pre-flight hook en tool:transfer", "3% — quick win alto valor",
+            ],
+            _t("Métricas de éxito", "Success metrics"): [
+                "Agent Looping rate: 40% → <10%",
+                "CSAT en sesiones con frustración +15%",
+                "False Transfer rate -80%",
+                "Supervisor escalations <1/semana",
+            ],
+        }
+        st.dataframe(phases, use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 4 — SIMULATIONS AS CI/CD
+    # ══════════════════════════════════════════════════════════════════════
+    with tab_sims:
+        section_badge(_t("Governance", "Governance"), SAND)
+        st.subheader(_t(
+            "6 de 7 suites failing y el agente está LIVE en producción. Eso no es un problema técnico — es un fallo de governance.",
+            "6 of 7 suites failing and the agent is LIVE in production. That is not a technical problem — it is a governance failure.",
+        ))
+        st.markdown(_t(
+            "Las simulaciones detectan exactamente los problemas reales (correlación "
+            "casi 1-a-1 con issues de producción), pero nadie está bloqueando el deploy "
+            "basándose en ellas. Es equivalente a mergear a main con tests en rojo.",
+            "Simulations detect exactly the real issues (almost 1-to-1 correlation with "
+            "production issues), but nobody is blocking deploys based on them. "
+            "It is equivalent to merging to main with red tests.",
+        ))
+
+        sims_data = {
+            _t("Suite", "Suite"): [
+                "Abuse Detection",
+                "Agent Authentication Auto-Transfer",
+                "Agent Looping Recovery",
+                "Escalation Logic",
+                "Language Switching",
+                "Modification Request Handling",
+                "Order Number Collection",
+            ],
+            _t("Resultado", "Result"): [
+                "24/27 ✅", "0/6 ❌", "0/3 ❌",
+                "2/8 ❌", "0/2 ❌", "0/5 ❌", "1/6 ❌",
+            ],
+            _t("Issue relacionado", "Related issue"): [
+                _t("Ninguno — única passing", "None — only passing suite"),
+                "#2 — CVP loop, 9 ses. Critical",
+                "Monitor Looping — 44/111 (40%)",
+                "#7 — bloquea transfers, 12 ses.",
+                "#8 — language switching, 13 ses.",
+                "Modifications en BACKLOG",
+                "#3 — order number collection, 14 ses.",
+            ],
+            "Tier": [
+                "Tier 1 ✅", "Tier 1 🔴", "Tier 2 🟡",
+                "Tier 2 🟡", "Tier 3 ⚪", "Tier 3 ⚪", "Tier 1 🔴",
+            ],
+        }
+        st.dataframe(sims_data, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        col_t1, col_t2, col_t3 = st.columns(3)
+
+        with col_t1:
+            with st.container(border=True):
+                st.markdown(f"### Tier 1 — {_t('Release gate (bloqueante)', 'Release gate (blocking)')}")
+                st.markdown(_t(
+                    "Debe estar 100% passing para mergear cualquier cambio al system prompt o tools:",
+                    "Must be 100% passing to merge any system prompt or tool change:",
+                ))
+                st.markdown("• Abuse Detection ✅\n• Agent Authentication Auto-Transfer ❌\n• Order Number Collection ❌")
+                st.error(_t("2 de 3 suites Tier 1 están failing. Deploy actual no debería haber ocurrido.",
+                            "2 of 3 Tier 1 suites are failing. Current deploy should not have happened."))
+
+        with col_t2:
+            with st.container(border=True):
+                st.markdown(f"### Tier 2 — {_t('Quality gate (alerta)', 'Quality gate (alert)')}")
+                st.markdown(_t(
+                    "Pueden fallar parcialmente pero requieren revisión antes del deploy:",
+                    "Can fail partially but require review before deploy:",
+                ))
+                st.markdown("• Agent Looping Recovery ❌\n• Escalation Logic ❌")
+                st.warning(_t("Ambas failing. Trigger de revisión obligatoria con Product Owner.",
+                              "Both failing. Mandatory review trigger with Product Owner."))
+
+        with col_t3:
+            with st.container(border=True):
+                st.markdown(f"### Tier 3 — {_t('Roadmap gate (informativo)', 'Roadmap gate (informative)')}")
+                st.markdown(_t(
+                    "Journeys no en producción — informativo, no bloqueante:",
+                    "Journeys not yet in production — informative, not blocking:",
+                ))
+                st.markdown("• Language Switching ❌\n• Modification Request Handling ❌")
+                st.info(_t("Activar como Tier 1 cuando cada intent pase a LIVE.",
+                           "Promote to Tier 1 when each intent goes LIVE."))
+
+        st.markdown("---")
+        st.markdown(_t("### Orden de remediación", "### Remediation order"))
+        remed = {
+            "#": ["1", "2", "3", "4", "5", "6"],
+            _t("Suite", "Suite"): [
+                "Order Number Collection", "Agent Authentication Auto-Transfer",
+                "Escalation Logic", "Agent Looping Recovery",
+                "Language Switching", "Modification Request Handling",
+            ],
+            _t("Por qué primero", "Why first"): [
+                _t("Habilita Oportunidad 1 (CustomerByTelephone FoD)", "Enables Opportunity 1 (CustomerByTelephone FoD)"),
+                _t("Mayor riesgo regulatorio — auth y compliance", "Highest regulatory risk — auth and compliance"),
+                _t("25% baseline existente — iterable rápido", "25% existing baseline — fast to iterate"),
+                _t("Gate para arquitectura de monitors (Tab 3)", "Gate for monitors architecture (Tab 3)"),
+                _t("Necesario antes de reabrir ES/IT/DE/FR", "Required before reopening ES/IT/DE/FR"),
+                _t("Esperar a que Modifications salga de BACKLOG", "Wait until Modifications exits BACKLOG"),
+            ],
+        }
+        st.dataframe(remed, use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 5 — KB FEEDBACK LOOP (OBLIVION)
+    # ══════════════════════════════════════════════════════════════════════
+    with tab_kb:
+        section_badge(_t("KB Feedback Loop", "KB Feedback Loop"), CLAY)
+        st.subheader(_t(
+            "Una KB que aprende de interacciones reales — viable con quality gate humano.",
+            "A KB that learns from real interactions — viable with a human quality gate.",
+        ))
+        st.markdown(_t(
+            "El modelo actual: copywriter edita documento → scraper semanal indexa → "
+            "agente consulta. Unidireccional y manual. "
+            "El modelo propuesto agrega un loop de retroalimentación desde las interacciones reales, "
+            "**sin reemplazar la KB curada** — la augmenta con blindspot detection y vocabulario real del caller.",
+            "Current model: copywriter edits document → weekly scraper indexes → agent queries. "
+            "Unidirectional and manual. "
+            "The proposed model adds a feedback loop from real interactions, "
+            "**without replacing the curated KB** — it augments it with blindspot detection "
+            "and real caller vocabulary.",
+        ))
+
+        st.markdown("---")
+        col_pipe, col_state = st.columns([3, 2])
+
+        with col_pipe:
+            st.markdown(_t("### Pipeline propuesto", "### Proposed pipeline"))
+            st.code(
+                "scrape_sessions.py          → raw transcripts\n"
+                "  ↓\n"
+                "sierra_classifier.py        → intent + pain_points + outcome  ✅ existe\n"
+                "  ↓\n"
+                "build_issue_log.py          → clusters                         ✅ existe\n"
+                "  ↓\n"
+                "rqs_scorer.py               → Resolution Quality Score 0-1     ❌ construir\n"
+                "  ↓\n"
+                "  ├─ RQS ≥ 0.75 → candidate_kb_generator.py                  ❌ construir\n"
+                "  │                  ↓\n"
+                "  │              [draft artículo + sesiones fuente + categoría]\n"
+                "  │                  ↓\n"
+                "  │              [HUMAN REVIEW — Product Owner / copywriter]   ← obligatorio\n"
+                "  │                  ↓\n"
+                "  │              [aprobado → Sierra KB upload / paste manual]\n"
+                "  │\n"
+                "  └─ RQS < 0.50 → gap_analysis.py                            ❌ construir\n"
+                "                     ↓\n"
+                "                 [reporte de blindspots → input para copywriter]",
+                language="text",
+            )
+
+        with col_state:
+            st.markdown(_t("### Resolution Quality Score (RQS)", "### Resolution Quality Score (RQS)"))
+            st.markdown(_t(
+                "Cómo distinguir una buena resolución de una mala para saber qué aprender:",
+                "How to distinguish a good resolution from a bad one to know what to learn:",
+            ))
+            rqs_data = {
+                _t("Señal", "Signal"): [
+                    "monitor_clean", "csat", "containment",
+                    "turn_efficiency", "intent_match",
+                ],
+                _t("Peso", "Weight"): ["30%", "25%", "20%", "15%", "10%"],
+                _t("Definición", "Definition"): [
+                    _t("0 monitores disparados", "0 monitors fired"),
+                    _t("CSAT ≥4/5 si existe", "CSAT ≥4/5 if available"),
+                    _t("Sin tool:transfer", "No tool:transfer"),
+                    _t("Turns ≤ p50 de su intent class", "Turns ≤ p50 of intent class"),
+                    _t("Intent inicial == intent final", "Initial intent == final intent"),
+                ],
+            }
+            st.dataframe(rqs_data, use_container_width=True, hide_index=True)
+            st.caption(_t(
+                "**Threshold para entrar al loop:** RQS ≥ 0.75 + revisión humana obligatoria.",
+                "**Threshold to enter the loop:** RQS ≥ 0.75 + mandatory human review.",
+            ))
+
+        st.markdown("---")
+        st.markdown(_t("### Fases de automatización", "### Automation phases"))
+        phases_kb = {
+            _t("Fase", "Phase"): ["0", "1", "2", "3"],
+            _t("Plazo", "Timeline"): [
+                _t("Mes 0-3", "Month 0-3"), _t("Mes 3-6", "Month 3-6"),
+                _t("Mes 6-12", "Month 6-12"), _t("Mes 12+", "Month 12+"),
+            ],
+            _t("Automatización", "Automation"): [
+                _t("Solo reporting — reportes de gap para copywriter", "Reporting only — gap reports for copywriter"),
+                _t("Draft generation — Oblivion sugiere, humano aprueba", "Draft generation — Oblivion suggests, human approves"),
+                _t("Auto-publish FAQs informativas con RQS ≥0.85", "Auto-publish informational FAQs with RQS ≥0.85"),
+                _t("Auto-publish + auto-update con audit mensual", "Auto-publish + auto-update with monthly audit"),
+            ],
+            _t("Validación", "Validation"): [
+                _t("100% humano escribe", "100% human writes"),
+                _t("100% humano aprueba", "100% human approves"),
+                _t("Audit semanal + rollback automático", "Weekly audit + auto rollback"),
+                _t("Audit mensual + rollback si CSAT cae", "Monthly audit + rollback if CSAT drops"),
+            ],
+        }
+        st.dataframe(phases_kb, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown(_t("### Riesgos y mitigaciones", "### Risks and mitigations"))
+        risks = {
+            _t("Riesgo", "Risk"): [
+                _t("Amplificación de respuestas malas", "Bad answer amplification"),
+                _t("Drift semántico del messaging oficial", "Semantic drift from official messaging"),
+                _t("PII leakage en artículos KB", "PII leakage in KB articles"),
+                _t("Auto-confirmación — aprende sus propios sesgos", "Self-confirmation — learns own biases"),
+                _t("Loop sin convergencia", "Non-convergent loop"),
+            ],
+            _t("Mitigación", "Mitigation"): [
+                _t("RQS ≥ 0.75 gate + revisión humana", "RQS ≥ 0.75 gate + human review"),
+                _t("Copywriter como editor-en-jefe — aprueba todo Fase 0-1", "Copywriter as editor-in-chief — approves everything Phase 0-1"),
+                _t("Sanitizer LLM + regex antes de generar draft", "LLM + regex sanitizer before generating draft"),
+                _t("≥3 sesiones independientes con misma resolución requeridas", "≥3 independent sessions with same resolution required"),
+                _t("Rollback automático si CSAT cae >5% en 7 días", "Auto rollback if CSAT drops >5% in 7 days"),
+            ],
+            _t("Categorías NUNCA auto-publicar", "NEVER auto-publish categories"): [
+                "—", "—",
+                _t("Compliance, refunds, cancelaciones, KYC, auth", "Compliance, refunds, cancellations, KYC, auth"),
+                "—", "—",
+            ],
+        }
+        st.dataframe(risks, use_container_width=True, hide_index=True)
+
+        st.info(_t(
+            "**Prerequisitos antes de Fase 1:** (a) las 3 oportunidades de Tab 2 en producción, "
+            "(b) RQS validado contra CSAT real, (c) ≥500 sesiones de baseline (no 110). "
+            "El valor real de Oblivion no es 'KB que aprende sola' — es **detección de blindspots** "
+            "y **vocabulario real del caller** como input para el copywriter.",
+            "**Prerequisites before Phase 1:** (a) the 3 opportunities from Tab 2 in production, "
+            "(b) RQS validated against real CSAT, (c) ≥500 sessions baseline (not 110). "
+            "Oblivion's real value is not 'self-learning KB' — it is **blindspot detection** "
+            "and **real caller vocabulary** as input for the copywriter.",
+        ))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 6 — CX ALIGNMENT
+    # ══════════════════════════════════════════════════════════════════════
+    with tab_cx:
+        section_badge(_t("Alineación estratégica", "Strategic alignment"), GREEN)
+        st.subheader(_t(
+            "El diseño del Product Owner es correcto en visión. El SOP tiene gaps operativos que los datos corrigen.",
+            "The Product Owner's design is correct in vision. The SOP has operational gaps that data corrects.",
+        ))
+        st.markdown(_t(
+            "Los datos no contradicen al Product Owner — exponen las **reglas que faltan en el SOP** "
+            "para que su propia visión se materialice.",
+            "Data does not contradict the Product Owner — it exposes the **rules missing from the SOP** "
+            "for their own vision to materialise.",
+        ))
+
+        st.markdown("---")
+        col_po, col_data = st.columns(2)
+
+        with col_po:
+            with st.container(border=True):
+                st.markdown(f"### ✅ {_t('Donde el Product Owner gana', 'Where the Product Owner wins')}")
+                wins_po = {
+                    _t("Principio", "Principle"): [
+                        _t("FoD CustomerByTelephone", "FoD CustomerByTelephone"),
+                        _t("Intent-driven auth (sin CVP informativo)", "Intent-driven auth (no CVP for informational)"),
+                        _t("3 preguntas CVP canónicas", "3 canonical CVP questions"),
+                        _t("Smart Containment philosophy", "Smart Containment philosophy"),
+                        _t("Clean handoff con contexto", "Clean handoff with context"),
+                        _t("KB curada como source of truth", "Curated KB as source of truth"),
+                        _t("CVP solo transaccional", "CVP for transactional only"),
+                    ],
+                    _t("Qué confirman los datos", "What data confirms"): [
+                        _t("Ausencia = causa de 43 ses. afectadas", "Absence = cause of 43 affected sessions"),
+                        _t("10 ses. con disclosure sin auth lo confirman", "10 sessions with unauth disclosure confirm it"),
+                        _t("Issues #4 son exactamente desviaciones de las 3", "Issues #4 are exactly deviations from the 3"),
+                        _t("Issues #7 (bloqueo) = opuesto de smart containment", "Issues #7 (blocking) = opposite of smart containment"),
+                        _t("13 ses. sin contexto al transfer confirman el gap", "13 sessions with no context at transfer confirm the gap"),
+                        _t("Fase 0-1 de Oblivion — el PO tiene razón", "Oblivion Phase 0-1 — PO is correct"),
+                        _t("Intents info sin CVP confirman el principio", "Info intents without CVP confirm the principle"),
+                    ],
+                }
+                st.dataframe(wins_po, use_container_width=True, hide_index=True)
+
+        with col_data:
+            with st.container(border=True):
+                st.markdown(f"### ⚠️ {_t('Donde los datos corrigen al SOP', 'Where data corrects the SOP')}")
+                wins_data = {
+                    _t("Regla SOP actual", "Current SOP rule"): [
+                        '"Allow retry. Do not transfer." (sin límite)',
+                        _t("Manual CVP sin definir cuándo", "Manual CVP without defining when"),
+                        _t("OTP 'planeado para el futuro'", "OTP 'planned for the future'"),
+                        _t("Simulations sin governance de release", "Simulations without release governance"),
+                        _t("Monitors sin recovery flow", "Monitors without recovery flow"),
+                    ],
+                    _t("Qué dicen los datos", "What data says"): [
+                        _t("9 ses. Critical de loop. Corrección: 3-strike → transfer",
+                           "9 Critical sessions of loop. Fix: 3-strike → transfer"),
+                        _t("Es el default cuando FoD no funciona — no es fallback",
+                           "It is the default when FoD is broken — not a fallback"),
+                        _t("CVP falla sistemáticamente — OTP debería subir prioridad",
+                           "CVP fails systematically — OTP should be prioritised"),
+                        _t("6/7 suites failing en producción — governance urgente",
+                           "6/7 suites failing in production — urgent governance needed"),
+                        _t("40% sesiones en loop sin acción correctiva",
+                           "40% of sessions looping with no corrective action"),
+                    ],
+                }
+                st.dataframe(wins_data, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown(_t("### Modelo combinado óptimo", "### Optimal combined model"))
+
+        col_keep, col_fix = st.columns(2)
+        with col_keep:
+            st.markdown(_t("**Mantener del Product Owner:**", "**Keep from Product Owner:**"))
+            st.markdown(_t(
+                "- CXI Design Principles como Norte Estratégico inmutable\n"
+                "- 3 preguntas CVP canónicas\n"
+                "- `CustomerByTelephone` como FoD obligatorio\n"
+                "- KB curada por copywriter como source of truth\n"
+                "- Smart Containment philosophy\n"
+                "- CVP solo para intents transaccionales",
+                "- CXI Design Principles as immutable strategic north\n"
+                "- 3 canonical CVP questions\n"
+                "- `CustomerByTelephone` as mandatory FoD\n"
+                "- Copywriter-curated KB as source of truth\n"
+                "- Smart Containment philosophy\n"
+                "- CVP for transactional intents only",
+            ))
+        with col_fix:
+            st.markdown(_t("**Corregir / agregar al SOP:**", "**Correct / add to SOP:**"))
+            st.markdown(_t(
+                "- Upper bound CVP retries: 3 strikes → transfer con contexto\n"
+                "- Intent classifier antes de CVP (informacional vs. transaccional)\n"
+                "- Monitors como circuit breakers activos\n"
+                "- Simulations como release gate Tier 1\n"
+                "- Subir prioridad de OTP y Modifications\n"
+                "- Oblivion como augmentation del copywriter (no reemplazo)",
+                "- CVP retry upper bound: 3 strikes → transfer with context\n"
+                "- Intent classifier before CVP (informational vs. transactional)\n"
+                "- Monitors as active circuit breakers\n"
+                "- Simulations as Tier 1 release gate\n"
+                "- Elevate OTP and Modifications priority\n"
+                "- Oblivion as copywriter augmentation (not replacement)",
+            ))
+
+        st.markdown("---")
+        st.markdown(_t("### Métricas de éxito — visión combinada (90 días)", "### Success metrics — combined vision (90 days)"))
+        metrics_final = {
+            _t("Métrica", "Metric"): [
+                _t("Containment rate", "Containment rate"),
+                _t("CVP success rate", "CVP success rate"),
+                _t("Agent Looping monitor trigger rate", "Agent Looping monitor trigger rate"),
+                _t("Issues Critical recurrentes", "Recurring Critical issues"),
+                _t("Simulation Tier 1 pass rate", "Simulation Tier 1 pass rate"),
+                _t("CustomerByTelephone FoD invocation rate", "CustomerByTelephone FoD invocation rate"),
+                _t("Velocity: detección → deploy fix", "Velocity: detection → deploy fix"),
+            ],
+            _t("Baseline actual", "Current baseline"): [
+                "~35% (estimado)", "~60% (estimado)", "40%",
+                "8 issues activos", "33% (1/3 passing)", "0%", ">30 días",
+            ],
+            _t("Target 90 días", "90-day target"): [
+                "≥65%", "≥85%", "<10%",
+                "≤2 issues recurrentes", "100%", "≥85%", "<5 días",
+            ],
+        }
+        st.dataframe(metrics_final, use_container_width=True, hide_index=True)
+
+
+# ---------------------------------------------------------------------------
 # PAGE — PO Recommendations
 # ---------------------------------------------------------------------------
 
@@ -3848,6 +4597,8 @@ elif page == "Gap Proposals":
     page_gap_drilldown()
 elif page == "PO Recs":
     page_po_recs()
+elif page == "Strategic":
+    page_strategic()
 elif page == "Simulations":
     page_simulations()
 elif page == "Glossary":
