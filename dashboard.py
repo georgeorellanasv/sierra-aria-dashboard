@@ -3397,6 +3397,96 @@ def page_glossary():
             "Things Sierra doesn't natively track — we built these for this analysis.",
         ))
 
+        # ── SFS — dedicated rich entry ────────────────────────────────────
+        st.markdown(_t("#### Session Friction Score (SFS)",
+                       "#### Session Friction Score (SFS)"))
+        st.markdown(_t(
+            "**Qué es** · Un número de **0 a 100 por llamada** que mide qué tan mala fue la "
+            "experiencia del caller — capturando tanto la *presencia* como la *magnitud* de los "
+            "problemas. A diferencia del gráfico de etapas (que es binario: hubo problema o no), "
+            "el SFS distingue un fallo leve de un loop catastrófico.",
+            "**What it is** · A number from **0 to 100 per call** that measures how bad the "
+            "caller's experience was — capturing both the *presence* and *magnitude* of problems. "
+            "Unlike the stage chart (which is binary: problem or no problem), the SFS distinguishes "
+            "a minor failure from a catastrophic loop.",
+        ))
+        st.markdown(_t(
+            "**Cómo funciona** · Es la suma de 4 componentes independientes. "
+            "Cada componente mapea directamente a una recomendación del Product Owner:",
+            "**How it works** · It is the sum of 4 independent components. "
+            "Each component maps directly to a Product Owner recommendation:",
+        ))
+
+        comp_table = {
+            _t("Componente", "Component"): ["CLI · PO-1", "IRG · PO-2", "MCS · PO-3", "IMD · PO-4"],
+            _t("Nombre", "Name"): [
+                _t("CVP Loop Intensity",       "CVP Loop Intensity"),
+                _t("Identity Resolution Gap",  "Identity Resolution Gap"),
+                _t("Monitor Compound Severity","Monitor Compound Severity"),
+                _t("Intent Mismatch Drag",     "Intent Mismatch Drag"),
+            ],
+            _t("Qué mide", "What it measures"): [
+                _t("Cuántas veces el agente re-preguntó las mismas preguntas CVP en un loop de auth",
+                   "How many times the agent re-asked the same CVP questions in an auth loop"),
+                _t("Si CustomerByTelephone no se invocó cuando debía identificar al caller por ANI",
+                   "Whether CustomerByTelephone was not invoked when it should have identified the caller by ANI"),
+                _t("Cuántos monitores Sierra dispararon y si se combinaron (2 monitores juntos = más daño que 1+1)",
+                   "How many Sierra monitors fired and whether they combined (2 monitors together = more damage than 1+1)"),
+                _t("Si el agente pidió autenticación CVP para una pregunta que no la necesita (fees, horarios, ETA genérico)",
+                   "Whether the agent requested CVP authentication for a question that does not need it (fees, hours, generic ETA)"),
+            ],
+            _t("Máx pts", "Max pts"): ["35", "20", "30", "15"],
+            _t("Recomendación PO", "PO Recommendation"): ["PO-1", "PO-2", "PO-3", "PO-4"],
+        }
+        st.dataframe(comp_table, use_container_width=True, hide_index=True)
+
+        st.markdown(_t(
+            "**Por qué importa** · El gráfico de etapas te dice *dónde* se atascan los callers. "
+            "El SFS te dice *qué tan grave* fue en cada sesión individual. "
+            "Una sesión con CLI=25 + MCS=18 (dos componentes activos) puntúa 43 — "
+            "entra en nivel Bloqueada, lo que significa que el agente intentó recuperarse y falló. "
+            "La misma sesión en el gráfico de etapas solo aparece como '1 sesión con problema en auth' — "
+            "sin el contexto de que también disparó dos monitores sin acción correctiva.",
+            "**Why it matters** · The stage chart tells you *where* callers get stuck. "
+            "The SFS tells you *how severe* it was for each individual session. "
+            "A session with CLI=25 + MCS=18 (two active components) scores 43 — "
+            "it lands in the Blocked level, meaning the agent tried to recover and failed. "
+            "That same session in the stage chart only shows as '1 session with an auth problem' — "
+            "without the context that it also fired two monitors with no corrective action.",
+        ))
+
+        st.markdown(_t("**Los 4 niveles:**", "**The 4 levels:**"))
+        lv1, lv2, lv3, lv4 = st.columns(4)
+        lv1.markdown("<div style='background:#eef5eb;border-left:3px solid #6c8d5a;padding:0.5rem 0.7rem;border-radius:3px;font-size:0.82rem'>"
+                     f"<b style='color:#6c8d5a'>🟢 {_t('Fluida','Smooth')}</b><br>"
+                     f"<b>0–14 pts</b><br>{_t('Llamada sin obstáculos. Caso de referencia para benchmarking.','Call without obstacles. Reference case for benchmarking.')}</div>",
+                     unsafe_allow_html=True)
+        lv2.markdown("<div style='background:#fdf9e8;border-left:3px solid #c9a449;padding:0.5rem 0.7rem;border-radius:3px;font-size:0.82rem'>"
+                     f"<b style='color:#c9a449'>🟡 {_t('Friccionada','Friction')}</b><br>"
+                     f"<b>15–34 pts</b><br>{_t('El caller notó esfuerzo extra. 1-2 problemas leves. Cada punto aquí = riesgo de NPS −1.','Caller noticed extra effort. 1-2 minor issues. Each point here = NPS −1 risk.')}</div>",
+                     unsafe_allow_html=True)
+        lv3.markdown("<div style='background:#fdf0e8;border-left:3px solid #d97e5a;padding:0.5rem 0.7rem;border-radius:3px;font-size:0.82rem'>"
+                     f"<b style='color:#d97e5a'>🟠 {_t('Bloqueada','Blocked')}</b><br>"
+                     f"<b>35–59 pts</b><br>{_t('El agente intentó recuperarse y falló. El caller probablemente abandonó o pidió humano.','The agent tried to recover and failed. Caller likely abandoned or requested a human.')}</div>",
+                     unsafe_allow_html=True)
+        lv4.markdown("<div style='background:#fde8e4;border-left:3px solid #c44f3a;padding:0.5rem 0.7rem;border-radius:3px;font-size:0.82rem'>"
+                     f"<b style='color:#c44f3a'>🔴 {_t('Crítica','Critical')}</b><br>"
+                     f"<b>60–100 pts</b><br>{_t('2+ recomendaciones del PO fallando en la misma llamada. Sesión perdida + riesgo reputacional.','2+ PO recommendations failing in the same call. Lost session + reputational risk.')}</div>",
+                     unsafe_allow_html=True)
+
+        st.markdown("")
+        st.caption(_t(
+            "**Ejemplo:** una sesión donde el agente preguntó las 3 preguntas CVP 4 veces (CLI ≈ 22) "
+            "y además disparó el monitor Agent Looping (MCS = 12) puntúa SFS = 34 — nivel Friccionada, "
+            "al borde de Bloqueada. Si además CustomerByTelephone no fue invocado (IRG = 8), sube a 42 — Bloqueada. "
+            "La métrica binaria anterior hubiera contado esa sesión igual que una con 1 solo CVP fallido.",
+            "**Example:** a session where the agent asked the 3 CVP questions 4 times (CLI ≈ 22) "
+            "and also triggered the Agent Looping monitor (MCS = 12) scores SFS = 34 — Friction level, "
+            "on the edge of Blocked. If CustomerByTelephone was also not invoked (IRG = 8), it rises to 42 — Blocked. "
+            "The previous binary metric would have counted that session the same as one with a single failed CVP.",
+        ))
+        st.markdown("---")
+
         _term(
             "Severity mix",
             what=("La distribución de 100% de las sesiones clasificadas "
